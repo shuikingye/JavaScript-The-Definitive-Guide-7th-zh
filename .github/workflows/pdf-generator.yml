@@ -17,9 +17,13 @@ jobs:
 
     - name: Setup Environment
       run: |
-        mkdir -p _output
-        echo "工作目录结构:"
-        find . -type f -name "*.md" | head -20
+        echo "📁 设置工作环境..."
+        mkdir -p _output _temp
+        echo "当前目录: $(pwd)"
+        echo "目录内容:"
+        ls -la
+        echo "Markdown 文件:"
+        find . -name "*.md" -type f | head -20
 
     - name: Install Dependencies
       run: |
@@ -33,8 +37,15 @@ jobs:
           fonts-noto-color-emoji \
           poppler-utils
 
-    - name: Create Simple Markdown Index
+    - name: Create Complete Markdown File
+      id: create_md
       run: |
+        echo "📝 创建完整的Markdown文件..."
+        
+        # 确保_temp目录存在
+        mkdir -p _temp
+        
+        # 创建基础文件
         echo "# JavaScript权威指南第七版" > _temp/complete.md
         echo "" >> _temp/complete.md
         echo "**作者: Richard-Billyham**" >> _temp/complete.md
@@ -42,15 +53,19 @@ jobs:
         echo "***" >> _temp/complete.md
         echo "" >> _temp/complete.md
         
-        # 添加 README.md 内容
+        # 添加README.md
         if [ -f "README.md" ]; then
+          echo "添加 README.md"
           cat "README.md" >> _temp/complete.md
           echo "" >> _temp/complete.md
           echo "\\newpage" >> _temp/complete.md
           echo "" >> _temp/complete.md
+        else
+          echo "⚠️  README.md 不存在"
         fi
         
-        # 查找并添加所有其他 markdown 文件
+        # 查找并添加其他markdown文件
+        echo "查找其他Markdown文件..."
         find . -name "*.md" -type f \
           ! -path "./.git/*" \
           ! -path "./node_modules/*" \
@@ -58,164 +73,211 @@ jobs:
           ! -path "./_temp/*" \
           ! -name "README.md" \
           ! -name "CONTRIBUTING.md" \
-          ! -name "CHANGELOG.md" | sort -V > _temp/files.txt
+          ! -name "CHANGELOG.md" > _temp/file_list.txt
         
-        if [ -s "_temp/files.txt" ]; then
+        if [ -s "_temp/file_list.txt" ]; then
+          echo "找到以下文件:"
+          cat _temp/file_list.txt
+          
+          # 按数字排序
+          sort -V _temp/file_list.txt > _temp/sorted_files.txt
+          
           while IFS= read -r file; do
-            echo "添加: $file"
-            echo "# $(basename "$file" .md)" >> _temp/complete.md
-            echo "" >> _temp/complete.md
-            cat "$file" >> _temp/complete.md
-            echo "" >> _temp/complete.md
-            echo "\\newpage" >> _temp/complete.md
-            echo "" >> _temp/complete.md
-          done < _temp/files.txt
+            if [ -f "$file" ]; then
+              echo "添加: $file"
+              echo "# $(basename "$file" .md)" >> _temp/complete.md
+              echo "" >> _temp/complete.md
+              cat "$file" >> _temp/complete.md
+              echo "" >> _temp/complete.md
+              echo "\\newpage" >> _temp/complete.md
+              echo "" >> _temp/complete.md
+            fi
+          done < _temp/sorted_files.txt
+        else
+          echo "⚠️  没有找到其他Markdown文件"
         fi
         
-        echo "合并完成，文件大小:"
-        ls -lh _temp/complete.md
+        # 验证文件创建
+        if [ ! -f "_temp/complete.md" ]; then
+          echo "❌ 未能创建 _temp/complete.md"
+          exit 1
+        fi
+        
+        echo "✅ 文件创建成功"
+        echo "文件大小: $(ls -lh _temp/complete.md)"
+        echo "行数: $(wc -l < _temp/complete.md)"
 
-    - name: Escape Special Characters
+    - name: Method 1 - Simple Pandoc
       run: |
-        echo "转义特殊字符..."
-        # 创建处理后的版本
-        cp _temp/complete.md _temp/complete_escaped.md
+        echo "🎯 方法1: 简单Pandoc转换..."
         
-        # 使用简单的 sed 命令转义 LaTeX 特殊字符
-        # 注意：这可能会影响代码块，但为了成功编译，我们暂时接受
-        sed -i 's/\\/\\\\textbackslash /g' _temp/complete_escaped.md
-        sed -i 's/#/\\#/g' _temp/complete_escaped.md
-        sed -i 's/\$/\\$/g' _temp/complete_escaped.md
-        sed -i 's/%/\\%/g' _temp/complete_escaped.md
-        sed -i 's/&/\\&/g' _temp/complete_escaped.md
-        sed -i 's/_/\\_/g' _temp/complete_escaped.md
-        sed -i 's/{/\\{/g' _temp/complete_escaped.md
-        sed -i 's/}/\\}/g' _temp/complete_escaped.md
-        sed -i 's/~/\\textasciitilde /g' _temp/complete_escaped.md
-        sed -i 's/\^/\\textasciicircum /g' _temp/complete_escaped.md
+        if [ ! -f "_temp/complete.md" ]; then
+          echo "❌ _temp/complete.md 不存在"
+          exit 1
+        fi
         
-        echo "转义完成"
-
-    - name: Generate PDF with Minimal Settings
-      run: |
-        echo "🎯 使用最小化设置生成PDF..."
-        
-        # 方法1: 最简单的pandoc命令
-        pandoc _temp/complete_escaped.md -o _output/javascript-guide.pdf \
+        # 最简单的pandoc命令
+        pandoc "_temp/complete.md" -o "_output/method1-simple.pdf" \
           --pdf-engine=xelatex \
           -V mainfont="Noto Sans CJK SC" \
           -V geometry:margin=2.5cm \
           -V papersize=a4 \
           --table-of-contents \
-          --toc-depth=3
+          --toc-depth=2
         
-        echo "✅ PDF生成完成"
+        echo "✅ 方法1完成"
 
-    - name: Alternative Method - Use Basic LaTeX Template
-      if: failure()
+    - name: Method 2 - With Metadata
       run: |
-        echo "🔄 使用基础LaTeX模板..."
+        echo "🎯 方法2: 带元数据的转换..."
         
-        # 创建基础LaTeX模板
-        cat > _temp/template.tex << 'EOF'
-        \documentclass[a4paper,12pt]{book}
-        \usepackage{xeCJK}
-        \setCJKmainfont{Noto Sans CJK SC}
-        \usepackage{geometry}
-        \geometry{a4paper, margin=2.5cm}
-        \usepackage{hyperref}
-        \hypersetup{
-            colorlinks=true,
-            linkcolor=blue,
-            urlcolor=cyan,
-            pdftitle={JavaScript权威指南第七版},
-            pdfauthor={Richard-Billyham}
-        }
-        \usepackage{titlesec}
-        \titleformat{\chapter}{\huge\bfseries}{\thechapter}{1em}{}
-        \titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
-        \titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
-        
-        \begin{document}
-        \maketitle
-        \tableofcontents
-        $body$
-        \end{document}
-        EOF
-        
-        # 使用模板生成PDF
-        pandoc _temp/complete.md -o _output/javascript-guide-template.pdf \
-          --template=_temp/template.tex \
-          --pdf-engine=xelatex \
-          --table-of-contents
-        
-        echo "✅ 模板方法完成"
-
-    - name: Final Attempt - HTML to PDF
-      if: failure()
-      run: |
-        echo "🔄 最终尝试：HTML转PDF..."
-        
-        # 先生成HTML
-        pandoc _temp/complete.md -o _temp/complete.html \
-          --toc \
-          --toc-depth=3
-        
-        # 然后使用weasyprint将HTML转为PDF（如果可用）
-        if command -v weasyprint >/dev/null 2>&1; then
-          weasyprint _temp/complete.html _output/javascript-guide-weasyprint.pdf
-        else
-          # 安装weasyprint
-          sudo apt-get install -y python3-weasyprint || \
-          pip3 install weasyprint || \
-          (echo "无法安装weasyprint，跳过此方法" && exit 0)
-          
-          weasyprint _temp/complete.html _output/javascript-guide-weasyprint.pdf
+        if [ ! -f "_temp/complete.md" ]; then
+          echo "❌ _temp/complete.md 不存在"
+          exit 1
         fi
         
-        echo "✅ HTML转PDF完成"
-
-    - name: Last Resort - Use Docker with Prebuilt Environment
-      if: failure()
-      run: |
-        echo "🚀 使用Docker预构建环境..."
-        
-        # 使用pandoc/latex的Docker镜像
-        docker run --rm -v $(pwd):/data pandoc/latex \
-          _temp/complete.md -o _output/javascript-guide-docker.pdf \
+        pandoc "_temp/complete.md" -o "_output/method2-with-metadata.pdf" \
           --pdf-engine=xelatex \
-          -V mainfont="Noto Serif" \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm \
+          -V papersize=a4 \
+          -V fontsize=12pt \
+          --table-of-contents \
+          --toc-depth=3 \
+          -M title="JavaScript权威指南第七版" \
+          -M author="Richard-Billyham"
+        
+        echo "✅ 方法2完成"
+
+    - name: Method 3 - Escape Special Characters
+      run: |
+        echo "🎯 方法3: 转义特殊字符..."
+        
+        if [ ! -f "_temp/complete.md" ]; then
+          echo "❌ _temp/complete.md 不存在"
+          exit 1
+        fi
+        
+        # 创建转义版本
+        cp "_temp/complete.md" "_temp/complete_escaped.md"
+        
+        # 转义反斜杠（主要问题）
+        sed -i 's/\\/\\\\/g' "_temp/complete_escaped.md"
+        
+        # 转义其他LaTeX特殊字符
+        sed -i 's/#/\\#/g' "_temp/complete_escaped.md"
+        sed -i 's/\$/\\$/g' "_temp/complete_escaped.md"
+        sed -i 's/%/\\%/g' "_temp/complete_escaped.md"
+        sed -i 's/&/\\&/g' "_temp/complete_escaped.md"
+        sed -i 's/_/\\_/g' "_temp/complete_escaped.md"
+        
+        pandoc "_temp/complete_escaped.md" -o "_output/method3-escaped.pdf" \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm \
+          -V papersize=a4 \
           --table-of-contents
         
-        echo "✅ Docker方法完成"
+        echo "✅ 方法3完成"
 
-    - name: Verify and Upload Results
+    - name: Method 4 - Use Listings for Code
       run: |
-        echo "📊 检查生成结果..."
+        echo "🎯 方法4: 使用listings处理代码..."
         
-        # 检查所有可能的输出文件
+        if [ ! -f "_temp/complete.md" ]; then
+          echo "❌ _temp/complete.md 不存在"
+          exit 1
+        fi
+        
+        # 创建简单的LaTeX头文件
+        mkdir -p _temp
+        cat > _temp/header.tex << 'EOF'
+        \usepackage{listings}
+        \usepackage{xcolor}
+        
+        \lstset{
+          basicstyle=\ttfamily\small,
+          breaklines=true,
+          frame=single,
+          backgroundcolor=\color{gray!5},
+          numbers=left
+        }
+        EOF
+        
+        pandoc "_temp/complete.md" -o "_output/method4-listings.pdf" \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm \
+          -V papersize=a4 \
+          --table-of-contents \
+          --listings \
+          --include-in-header="${{ github.workspace }}/_temp/header.tex"
+        
+        echo "✅ 方法4完成"
+
+    - name: Method 5 - Minimal Approach
+      run: |
+        echo "🎯 方法5: 最小化方法..."
+        
+        if [ ! -f "_temp/complete.md" ]; then
+          echo "❌ _temp/complete.md 不存在"
+          exit 1
+        fi
+        
+        # 只转换前N行来测试
+        head -n 5000 "_temp/complete.md" > "_temp/minimal_test.md"
+        
+        pandoc "_temp/minimal_test.md" -o "_output/method5-minimal.pdf" \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm
+        
+        echo "✅ 方法5完成"
+
+    - name: Verify Results
+      run: |
+        echo "📊 验证生成结果..."
+        
+        # 检查_output目录
+        echo "输出目录内容:"
+        ls -la _output/ || echo "输出目录不存在"
+        
+        # 检查生成的PDF文件
         shopt -s nullglob
+        pdf_count=0
         for pdf in _output/*.pdf; do
           if [ -f "$pdf" ]; then
             size=$(stat -c%s "$pdf")
-            echo "✅ 找到: $pdf ($((size/1024/1024)) MB)"
+            echo "✅ 找到: $pdf ($((size/1024)) KB)"
+            pdf_count=$((pdf_count+1))
           fi
         done
         
-        # 如果没有找到任何PDF，创建错误标记
-        if ! compgen -G "_output/*.pdf" > /dev/null; then
+        if [ $pdf_count -eq 0 ]; then
           echo "❌ 没有生成任何PDF文件"
           echo "调试信息:"
-          echo "原始文件大小: $(ls -lh _temp/complete.md)"
-          echo "转义文件大小: $(ls -lh _temp/complete_escaped.md)"
-          echo "前10行内容:"
-          head -10 _temp/complete.md
+          echo "工作目录: $(pwd)"
+          echo "_temp目录内容:"
+          ls -la _temp/ || echo "_temp目录不存在"
+          echo "complete.md前10行:"
+          head -10 _temp/complete.md || echo "无法读取complete.md"
           exit 1
+        else
+          echo "🎉 成功生成 $pdf_count 个PDF文件"
         fi
 
-    - name: Upload PDF Artifact
+    - name: Upload PDF Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: JavaScript-Guide-PDF
+        name: Generated-PDFs
         path: _output/*.pdf
         retention-days: 30
+
+    - name: Upload Debug Info
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Debug-Info
+        path: |
+          _temp/
+        retention-days: 7
