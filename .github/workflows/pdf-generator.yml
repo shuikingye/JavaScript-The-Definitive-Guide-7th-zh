@@ -3,7 +3,7 @@ name: Generate PDF from Markdown
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   generate-pdf:
@@ -18,9 +18,8 @@ jobs:
     - name: Setup Environment
       run: |
         mkdir -p _output _temp
-        echo "工作目录: $(pwd)"
-        echo "文件列表:"
-        find . -name "*.md" -type f | head -10
+        echo "工作目录结构:"
+        find . -type f -name "*.md" | head -20
 
     - name: Install Dependencies
       run: |
@@ -36,48 +35,73 @@ jobs:
           texlive-pictures \
           lmodern \
           fonts-noto-cjk \
-          fonts-noto-color-emoji
+          fonts-noto-color-emoji \
+          poppler-utils  # 用于 pdfinfo
 
-    - name: Check Markdown Files
-      id: check_files
+    - name: Find and Combine All Markdown Files
+      id: combine_files
       run: |
-        # 确定入口文件
-        if [ -f "README.md" ]; then
-          ENTRY_FILE="README.md"
-        elif [ -f "main.md" ]; then
-          ENTRY_FILE="main.md"
-        elif [ -f "index.md" ]; then
-          ENTRY_FILE="index.md"
-        else
-          ENTRY_FILE=$(find . -name "*.md" -type f | head -1)
-        fi
+        echo "🔍 查找所有 Markdown 文件..."
         
-        if [ -z "$ENTRY_FILE" ]; then
-          echo "❌ 未找到任何 Markdown 文件"
-          exit 1
-        fi
-        
-        echo "📖 使用入口文件: $ENTRY_FILE"
-        echo "entry_file=$ENTRY_FILE" >> $GITHUB_OUTPUT
-        
-        # 记录找到的所有 Markdown 文件
+        # 查找所有 markdown 文件，排除无关目录
         find . -name "*.md" -type f \
           ! -path "./.git/*" \
           ! -path "./node_modules/*" \
           ! -path "./_output/*" \
-          ! -path "./_temp/*" > _temp/all_markdown_files.txt
+          ! -path "./_temp/*" \
+          ! -name "README.md" \
+          ! -name "CONTRIBUTING.md" \
+          ! -name "CHANGELOG.md" > _temp/md_files.txt
         
-        echo "📋 找到的 Markdown 文件:"
-        cat _temp/all_markdown_files.txt
+        # 如果有 README.md，放在最前面
+        if [ -f "README.md" ]; then
+          echo "README.md" > _temp/combined.md
+          echo "---" >> _temp/combined.md
+          echo "" >> _temp/combined.md
+        fi
+        
+        # 按数字顺序排序文件（如果文件名以数字开头）
+        if [ -s "_temp/md_files.txt" ]; then
+          echo "📚 找到以下 Markdown 文件:"
+          cat _temp/md_files.txt
+          
+          # 尝试按数字排序
+          cat _temp/md_files.txt | sort -V > _temp/sorted_files.txt
+          
+          # 合并所有文件
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "添加文件: $file"
+              cat "$file" >> _temp/combined.md
+              echo "" >> _temp/combined.md
+              echo "---" >> _temp/combined.md
+              echo "" >> _temp/combined.md
+            fi
+          done < _temp/sorted_files.txt
+        else
+          # 如果没有其他文件，只使用 README.md
+          if [ -f "README.md" ]; then
+            cp README.md _temp/combined.md
+          else
+            echo "❌ 没有找到任何 Markdown 文件"
+            exit 1
+          fi
+        fi
+        
+        echo "✅ 合并完成，总大小:"
+        ls -lh _temp/combined.md
+        echo "行数统计:"
+        wc -l _temp/combined.md
 
     - name: Create LaTeX Header File
       run: |
-        # 创建包含完整LaTeX样式的header文件
+        mkdir -p _temp
         cat > _temp/header.tex << 'EOFEND'
         \usepackage{titlesec}
         \usepackage{fancyhdr}
         \usepackage{xcolor}
         \usepackage{hyperref}
+        \usepackage{bookmark}
         
         % 章节标题样式
         \titleformat{\chapter}[display]
@@ -107,44 +131,52 @@ jobs:
           pdfkeywords={JavaScript,编程,指南},
           bookmarksnumbered=true,
           bookmarksopen=true,
-          pdfstartview=FitH
+          pdfstartview=FitH,
+          linkcolor=blue,
+          urlcolor=cyan,
+          citecolor=green
         }
         
-        % 代码块支持
+        % 代码块样式
         \usepackage{listings}
+        \usepackage{caption}
+        \DeclareCaptionFont{white}{\color{white}}
+        \DeclareCaptionFormat{listing}{\colorbox{gray}{\parbox{\textwidth}{#1#2#3}}}
+        \captionsetup[lstlisting]{format=listing,labelfont=white,textfont=white}
+        
         \lstset{
-          basicstyle=\ttfamily\small,
+          backgroundcolor=\color{white},
+          basicstyle=\footnotesize\ttfamily,
+          breakatwhitespace=false,
           breaklines=true,
+          captionpos=b,
+          commentstyle=\color{green},
+          extendedchars=true,
           frame=single,
-          backgroundcolor=\color{gray!5}
+          keepspaces=true,
+          keywordstyle=\color{blue},
+          numbers=left,
+          numbersep=5pt,
+          numberstyle=\tiny\color{gray},
+          rulecolor=\color{black},
+          showspaces=false,
+          showstringspaces=false,
+          showtabs=false,
+          stepnumber=1,
+          stringstyle=\color{red},
+          tabsize=2
         }
         EOFEND
-        
-        # 验证文件创建成功
-        echo "✅ LaTeX header 文件已创建:"
-        ls -la _temp/header.tex
-        echo "文件内容预览:"
-        head -10 _temp/header.tex
 
-    - name: Generate PDF with Enhanced Styling
+    - name: Generate PDF with All Content
       run: |
-        ENTRY_FILE="${{ steps.check_files.outputs.entry_file }}"
         WORKSPACE_PATH="${{ github.workspace }}"
         
-        echo "🎯 开始生成PDF..."
-        echo "入口文件: $ENTRY_FILE"
-        echo "工作目录: $WORKSPACE_PATH"
-        echo "Header文件路径: $WORKSPACE_PATH/_temp/header.tex"
+        echo "🎯 开始生成完整PDF..."
+        echo "输入文件大小: $(ls -lh _temp/combined.md)"
         
-        # 检查header文件是否存在
-        if [ ! -f "_temp/header.tex" ]; then
-          echo "❌ Header文件不存在，重新创建..."
-          mkdir -p _temp
-          echo "\\usepackage{hyperref}" > _temp/header.tex
-        fi
-        
-        # 使用Pandoc生成PDF，确保使用完整路径
-        pandoc "$ENTRY_FILE" -o "_output/JavaScript权威指南.pdf" \
+        # 生成PDF
+        pandoc "_temp/combined.md" -o "_output/javascript-guide.pdf" \
           --metadata title="JavaScript权威指南第七版" \
           --metadata author="Richard-Billyham" \
           --table-of-contents \
@@ -163,40 +195,55 @@ jobs:
           -V papersize=a4 \
           -V fontsize=11pt \
           -V linestretch=1.2 \
+          -V secnumdepth=3 \
           --include-in-header="$WORKSPACE_PATH/_temp/header.tex" \
-          --highlight-style=tango
+          --highlight-style=tango \
+          --pdf-engine-opt=-shell-escape
         
-        echo "✅ PDF生成命令执行完成"
+        echo "✅ PDF生成完成"
 
-    - name: Verify PDF Generation
+    - name: Verify PDF Content
       run: |
-        if [ ! -f "_output/JavaScript权威指南.pdf" ]; then
+        echo "📊 验证PDF文件..."
+        if [ ! -f "_output/javascript-guide.pdf" ]; then
           echo "❌ PDF 文件生成失败"
-          echo "当前目录内容:"
-          ls -la
-          echo "_output 目录内容:"
-          ls -la _output/ || echo "_output 目录不存在"
+          exit 1
+        fi
+        
+        PDF_SIZE=$(stat -c%s "_output/javascript-guide.pdf")
+        echo "PDF 文件大小: $PDF_SIZE 字节"
+        
+        # 检查PDF基本信息
+        if command -v pdfinfo >/dev/null 2>&1; then
+          echo "📄 PDF 信息:"
+          pdfinfo "_output/javascript-guide.pdf" || echo "无法读取PDF详细信息"
+        else
+          echo "📄 PDF 文件信息:"
+          ls -lh "_output/javascript-guide.pdf"
+        fi
+        
+        # 大小检查 - 如果小于100KB，可能有问题
+        if [ "$PDF_SIZE" -lt 102400 ]; then
+          echo "⚠️  警告: PDF 文件可能太小，内容可能不完整"
+          echo "调试信息:"
+          echo "合并的Markdown文件:"
+          ls -lh _temp/combined.md
+          echo "前100行内容:"
+          head -100 _temp/combined.md
           exit 1
         else
-          echo "✅ PDF 文件生成成功"
-          echo "文件信息:"
-          ls -la "_output/JavaScript权威指南.pdf"
-          # 尝试获取PDF基本信息
-          if command -v pdfinfo &> /dev/null; then
-            sudo apt-get install -y poppler-utils
-            pdfinfo "_output/JavaScript权威指南.pdf" || echo "无法读取PDF信息"
-          fi
+          echo "✅ PDF 文件大小正常"
         fi
 
     - name: Upload PDF Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: JavaScript权威指南
-        path: _output/JavaScript权威指南.pdf
+        name: JavaScript-Guide-PDF
+        path: _output/javascript-guide.pdf
         retention-days: 30
 
-    - name: Upload to GitHub Releases (Optional)
+    - name: Upload to GitHub Releases
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: _output/JavaScript权威指南.pdf
+        files: _output/javascript-guide.pdf
