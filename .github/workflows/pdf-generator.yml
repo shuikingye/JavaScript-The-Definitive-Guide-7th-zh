@@ -20,6 +20,8 @@ jobs:
         echo "📁 设置工作环境..."
         mkdir -p _output _temp
         echo "当前目录: $(pwd)"
+        echo "项目结构:"
+        find . -name "*.md" -type f | sort
 
     - name: Install Dependencies
       run: |
@@ -33,80 +35,6 @@ jobs:
           fonts-noto-color-emoji \
           poppler-utils \
           python3
-
-    - name: Advanced Preprocessing with Python
-      run: |
-        echo "🔧 使用Python进行高级预处理..."
-        
-        # 创建Python脚本来处理转义序列
-        cat > _temp/preprocess.py << 'EOF'
-        import re
-        import sys
-        
-        def escape_latex_special_chars(text):
-            # LaTeX特殊字符转义映射
-            escape_map = {
-                '\\': '\\\\textbackslash{}',
-                '#': '\\#',
-                '$': '\\$',
-                '%': '\\%',
-                '&': '\\&',
-                '_': '\\_',
-                '{': '\\{',
-                '}': '\\}',
-                '~': '\\textasciitilde{}',
-                '^': '\\textasciicircum{}',
-                '<': '\\textless{}',
-                '>': '\\textgreater{}',
-                '|': '\\textbar{}'
-            }
-            
-            # 首先处理代码块中的转义序列
-            lines = text.split('\n')
-            in_code_block = False
-            processed_lines = []
-            
-            for line in lines:
-                # 检测代码块开始/结束
-                if line.strip().startswith('```'):
-                    in_code_block = not in_code_block
-                    processed_lines.append(line)
-                    continue
-                
-                if in_code_block:
-                    # 在代码块中，特别处理转义序列
-                    # 将 \n 替换为 \\n，\t 替换为 \\t 等
-                    line = line.replace('\\n', '\\\\n')
-                    line = line.replace('\\t', '\\\\t')
-                    line = line.replace('\\r', '\\\\r')
-                    line = line.replace('\\"', '\\\\"')
-                    line = line.replace("\\'", "\\\\'")
-                    line = line.replace('\\`', '\\\\`')
-                    processed_lines.append(line)
-                else:
-                    # 在普通文本中，转义所有LaTeX特殊字符
-                    for char, escaped in escape_map.items():
-                        line = line.replace(char, escaped)
-                    processed_lines.append(line)
-            
-            return '\n'.join(processed_lines)
-        
-        # 读取原始文件
-        with open('_temp/complete.md', 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 处理内容
-        processed_content = escape_latex_special_chars(content)
-        
-        # 保存处理后的内容
-        with open('_temp/complete_processed.md', 'w', encoding='utf-8') as f:
-            f.write(processed_content)
-        
-        print("✅ Python预处理完成")
-        EOF
-        
-        # 运行Python预处理脚本
-        python3 _temp/preprocess.py
 
     - name: Create Structured Markdown File
       run: |
@@ -175,25 +103,86 @@ jobs:
         done
         
         echo "✅ 文件创建完成"
-        echo "原始文件大小: $(ls -lh _temp/complete.md)"
-        echo "处理后文件大小: $(ls -lh _temp/complete_processed.md)"
+        echo "文件大小: $(ls -lh _temp/complete.md)"
 
-    - name: Debug Problematic Lines
+    - name: Advanced Preprocessing with Python
       run: |
-        echo "🐛 调试问题行..."
-        echo "检查第2120-2130行:"
-        if [ -f "_temp/complete_processed.md" ]; then
-          sed -n '2120,2130p' _temp/complete_processed.md
-        fi
-        echo ""
-        echo "检查第2150-2165行:"
-        if [ -f "_temp/complete_processed.md" ]; then
-          sed -n '2150,2165p' _temp/complete_processed.md
-        fi
+        echo "🔧 使用Python进行高级预处理..."
+        
+        # 创建Python脚本来处理转义序列
+        cat > _temp/preprocess.py << 'EOF'
+        import re
+        
+        def escape_latex_special_chars(text):
+            # LaTeX特殊字符转义映射
+            escape_map = {
+                '\\': '\\\\textbackslash{}',
+                '#': '\\#',
+                '$': '\\$',
+                '%': '\\%',
+                '&': '\\&',
+                '_': '\\_',
+                '{': '\\{',
+                '}': '\\}',
+                '~': '\\textasciitilde{}',
+                '^': '\\textasciicircum{}',
+                '<': '\\textless{}',
+                '>': '\\textgreater{}',
+                '|': '\\textbar{}'
+            }
+            
+            # 首先处理代码块中的转义序列
+            lines = text.split('\n')
+            in_code_block = False
+            processed_lines = []
+            
+            for line in lines:
+                # 检测代码块开始/结束
+                if line.strip().startswith('```'):
+                    in_code_block = not in_code_block
+                    processed_lines.append(line)
+                    continue
+                
+                if in_code_block:
+                    # 在代码块中，特别处理转义序列
+                    # 将 \n 替换为 \\n，\t 替换为 \\t 等
+                    line = line.replace('\\n', '\\\\n')
+                    line = line.replace('\\t', '\\\\t')
+                    line = line.replace('\\r', '\\\\r')
+                    line = line.replace('\\"', '\\\\"')
+                    line = line.replace("\\'", "\\\\'")
+                    line = line.replace('\\`', '\\\\`')
+                    processed_lines.append(line)
+                else:
+                    # 在普通文本中，转义所有LaTeX特殊字符
+                    for char, escaped in escape_map.items():
+                        line = line.replace(char, escaped)
+                    processed_lines.append(line)
+            
+            return '\n'.join(processed_lines)
+        
+        # 读取原始文件
+        with open('_temp/complete.md', 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 处理内容
+        processed_content = escape_latex_special_chars(content)
+        
+        # 保存处理后的内容
+        with open('_temp/complete_processed.md', 'w', encoding='utf-8') as f:
+            f.write(processed_content)
+        
+        print("✅ Python预处理完成")
+        EOF
+        
+        # 运行Python预处理脚本
+        python3 _temp/preprocess.py
+        
+        echo "预处理后文件大小: $(ls -lh _temp/complete_processed.md)"
 
-    - name: Create Ultimate LaTeX Header
+    - name: Create LaTeX Header
       run: |
-        echo "📄 创建终极LaTeX头文件..."
+        echo "📄 创建LaTeX头文件..."
         
         cat > _temp/header.tex << 'EOF'
         \usepackage{fontspec}
@@ -228,41 +217,24 @@ jobs:
           pdfauthor={Richard-Billyham}
         }
         
-        % 终极代码块处理 - 使用最安全的设置
+        % 代码块处理
         \lstset{
           basicstyle=\ttfamily\small,
           breaklines=true,
           frame=single,
           backgroundcolor=\color{gray!5},
           upquote=true,
-          showstringspaces=false,
-          literate=%
-          {\\}{{\textbackslash}}1%
-          {\n}{{\textbackslash n}}1%
-          {\t}{{\textbackslash t}}1%
-          {\r}{{\textbackslash r}}1%
-        }
-        
-        % 定义JavaScript语言
-        \lstdefinelanguage{JavaScript}{
-          keywords={typeof, new, true, false, catch, function, return, null, catch, switch, var, if, in, while, do, else, case, break},
-          keywordstyle=\color{blue}\bfseries,
-          ndkeywords={class, export, boolean, throw, implements, import, this},
-          ndkeywordstyle=\color{darkgray}\bfseries,
-          identifierstyle=\color{black},
-          sensitive=false,
-          comment=[l]{//},
-          morecomment=[s]{/*}{*/},
-          commentstyle=\color{purple}\ttfamily,
-          stringstyle=\color{red}\ttfamily
+          showstringspaces=false
         }
         EOF
-
-    - name: Generate PDF - Method 1 (Processed Content)
-      run: |
-        echo "🎯 方法1: 使用预处理内容生成PDF..."
         
-        pandoc "_temp/complete_processed.md" -o "_output/method1-processed.pdf" \
+        echo "✅ LaTeX头文件创建完成"
+
+    - name: Generate PDF - Method 1 (Simple)
+      run: |
+        echo "🎯 方法1: 简单生成PDF..."
+        
+        pandoc "_temp/complete_processed.md" -o "_output/javascript-guide.pdf" \
           --pdf-engine=xelatex \
           -V mainfont="Noto Sans CJK SC" \
           -V geometry:margin=2.5cm \
@@ -274,15 +246,14 @@ jobs:
         
         echo "✅ 方法1完成"
 
-    - name: Generate PDF - Method 2 (With Listings)
+    - name: Generate PDF - Method 2 (With Header)
       if: failure()
       run: |
-        echo "🎯 方法2: 使用listings包生成PDF..."
+        echo "🎯 方法2: 使用头文件生成PDF..."
         
-        pandoc "_temp/complete_processed.md" -o "_output/method2-listings.pdf" \
+        pandoc "_temp/complete_processed.md" -o "_output/javascript-guide-with-header.pdf" \
           --pdf-engine=xelatex \
           --include-in-header="${{ github.workspace }}/_temp/header.tex" \
-          --listings \
           --table-of-contents \
           --toc-depth=3 \
           -M title="JavaScript权威指南第七版" \
@@ -290,120 +261,109 @@ jobs:
         
         echo "✅ 方法2完成"
 
-    - name: Generate PDF - Method 3 (No Code Blocks)
+    - name: Generate PDF - Method 3 (Chapter by Chapter)
       if: failure()
       run: |
-        echo "🎯 方法3: 移除代码块生成PDF..."
-        
-        # 创建没有代码块的版本
-        python3 << 'EOF'
-        import re
-        
-        with open('_temp/complete.md', 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 移除所有代码块
-        content = re.sub(r'```.*?```', '【代码块已移除】', content, flags=re.DOTALL)
-        
-        with open('_temp/complete_no_code.md', 'w', encoding='utf-8') as f:
-            f.write(content)
-        
-        print("✅ 代码块移除完成")
-        EOF
-        
-        pandoc "_temp/complete_no_code.md" -o "_output/method3-no-code.pdf" \
-          --pdf-engine=xelatex \
-          -V mainfont="Noto Sans CJK SC" \
-          -V geometry:margin=2.5cm \
-          -V papersize=a4 \
-          --table-of-contents \
-          --toc-depth=3
-        
-        echo "✅ 方法3完成"
-
-    - name: Generate PDF - Method 4 (Split by Chapter)
-      if: failure()
-      run: |
-        echo "🎯 方法4: 分章节生成PDF..."
+        echo "🎯 方法3: 分章节生成PDF..."
         
         # 为每个章节单独生成PDF
-        chapters=(
-          "./docs/ch1.md" "./docs/ch2.md" "./docs/ch3.md" "./docs/ch4.md" "./docs/ch5.md"
-          "./docs/ch6.md" "./docs/ch7.md" "./docs/ch8.md" "./docs/ch9.md" "./docs/ch10.md"
-          "./docs/ch11.md" "./docs/ch12.md" "./docs/ch13.md" "./docs/ch14.md" "./docs/ch15.md"
-          "./docs/ch16.md" "./docs/ch17.md"
-        )
+        chapters=("ch1" "ch2" "ch3" "ch4" "ch5" "ch6" "ch7" "ch8" "ch9" "ch10" "ch11" "ch12" "ch13" "ch14" "ch15" "ch16" "ch17")
         
         success_count=0
         for chapter in "${chapters[@]}"; do
-          if [ -f "$chapter" ]; then
-            chapter_name=$(basename "$chapter" .md)
-            echo "生成: $chapter_name.pdf"
+          chapter_file="./docs/${chapter}.md"
+          if [ -f "$chapter_file" ]; then
+            echo "处理章节: $chapter"
             
-            # 为每个章节创建单独的处理版本
-            python3 << EOF
-            import re
+            # 为每个章节创建单独的文件
+            cat > "_temp/${chapter}_processed.md" << EOF
+            # ${chapter}
             
-            with open('$chapter', 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # 转义处理
-            def escape_latex(text):
-                escape_map = {'\\\\': '\\\\\\\\textbackslash{}', '#': '\\\\#', '$': '\\\\$', '%': '\\\\%', '&': '\\\\&', '_': '\\\\_', '{': '\\\\{', '}': '\\\\}', '~': '\\\\textasciitilde{}', '^': '\\\\textasciicircum{}'}
-                for char, escaped in escape_map.items():
-                    text = text.replace(char, escaped)
-                text = text.replace('\\\\n', '\\\\\\\\n')
-                text = text.replace('\\\\t', '\\\\\\\\t')
-                return text
-            
-            processed = escape_latex(content)
-            with open('_temp/${chapter_name}_processed.md', 'w', encoding='utf-8') as f:
-                f.write(processed)
             EOF
+            cat "$chapter_file" >> "_temp/${chapter}_processed.md"
             
-            if pandoc "_temp/${chapter_name}_processed.md" -o "_output/${chapter_name}.pdf" \
+            # 简单转义处理
+            sed -i 's/\\/\\\\/g' "_temp/${chapter}_processed.md"
+            sed -i 's/#/\\#/g' "_temp/${chapter}_processed.md"
+            sed -i 's/\$/\\$/g' "_temp/${chapter}_processed.md"
+            
+            if pandoc "_temp/${chapter}_processed.md" -o "_output/${chapter}.pdf" \
               --pdf-engine=xelatex \
               -V mainfont="Noto Sans CJK SC" \
-              -V geometry:margin=2.5cm 2>/dev/null; then
-              echo "✅ $chapter_name 生成成功"
+              -V geometry:margin=2.5cm; then
+              echo "✅ $chapter 生成成功"
               success_count=$((success_count+1))
             else
-              echo "❌ $chapter_name 生成失败"
+              echo "❌ $chapter 生成失败"
+              # 尝试不使用转义
+              cp "$chapter_file" "_temp/${chapter}_simple.md"
+              if pandoc "_temp/${chapter}_simple.md" -o "_output/${chapter}_simple.pdf" \
+                --pdf-engine=xelatex \
+                -V mainfont="Noto Sans CJK SC" 2>/dev/null; then
+                echo "✅ $chapter (简单版) 生成成功"
+                success_count=$((success_count+1))
+              fi
             fi
           fi
         done
         
         echo "分章节生成完成: $success_count/17 成功"
 
+    - name: Generate PDF - Method 4 (Minimal Content)
+      if: failure()
+      run: |
+        echo "🎯 方法4: 最小内容生成PDF..."
+        
+        # 只使用README.md和第一章测试
+        if [ -f "README.md" ]; then
+          cp "README.md" "_temp/minimal.md"
+          echo "" >> "_temp/minimal.md"
+          echo "\\newpage" >> "_temp/minimal.md"
+          echo "" >> "_temp/minimal.md"
+        fi
+        
+        if [ -f "./docs/ch1.md" ]; then
+          cat "./docs/ch1.md" >> "_temp/minimal.md"
+        fi
+        
+        # 简单转义
+        sed -i 's/\\/\\\\/g' "_temp/minimal.md"
+        
+        pandoc "_temp/minimal.md" -o "_output/minimal-guide.pdf" \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm \
+          --table-of-contents
+        
+        echo "✅ 方法4完成"
+
     - name: Check and Upload Results
       run: |
         echo "📊 检查生成结果..."
         
         # 检查所有PDF文件
-        pdf_files=()
+        success=false
         for pdf in _output/*.pdf; do
           if [ -f "$pdf" ]; then
             size=$(stat -c%s "$pdf")
-            if [ $size -gt 10240 ]; then  # 大于10KB
-              echo "✅ 有效PDF: $pdf ($((size/1024)) KB)"
-              pdf_files+=("$pdf")
-            else
-              echo "⚠️  小文件: $pdf ($((size/1024)) KB)"
+            echo "找到: $pdf ($((size/1024)) KB)"
+            if [ $size -gt 102400 ]; then  # 大于100KB
+              success=true
+              echo "🎉 找到有效的PDF文件: $pdf"
             fi
           fi
         done
         
-        if [ ${#pdf_files[@]} -eq 0 ]; then
+        if [ "$success" = false ]; then
           echo "❌ 没有生成有效的PDF文件"
           echo "调试信息:"
-          echo "问题区域内容:"
-          if [ -f "_temp/complete_processed.md" ]; then
-            echo "第2120-2130行:"
-            sed -n '2120,2130p' _temp/complete_processed.md
-          fi
+          echo "检查 complete_processed.md 是否存在:"
+          ls -la _temp/complete_processed.md || echo "文件不存在"
+          echo "前10行内容:"
+          head -10 _temp/complete_processed.md || echo "无法读取文件"
           exit 1
         else
-          echo "🎉 成功生成 ${#pdf_files[@]} 个PDF文件"
+          echo "✅ PDF生成成功!"
         fi
 
     - name: Upload PDF Artifacts
@@ -412,3 +372,11 @@ jobs:
         name: JavaScript-Guide-PDF
         path: _output/*.pdf
         retention-days: 30
+
+    - name: Upload Debug Info
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Debug-Info
+        path: _temp/
+        retention-days: 7
