@@ -153,8 +153,7 @@ jobs:
           --self-contained \
           -M title="JavaScript权威指南第七版" \
           -M author="Richard-Billyham" \
-          --metadata lang=zh-CN \
-          --css=https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css
+          --metadata lang=zh-CN
         
         echo "✅ HTML 转换完成"
 
@@ -163,8 +162,6 @@ jobs:
         echo "🎨 创建增强的 CSS 样式..."
         
         cat > _temp/enhanced.css << 'EOF'
-        @import url('https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css');
-        
         @page {
           size: A4;
           margin: 2cm;
@@ -511,11 +508,9 @@ jobs:
       run: |
         echo "🎯 生成增强样式的 PDF..."
         
-        # 使用 WeasyPrint 生成 PDF
+        # 使用 WeasyPrint 生成 PDF，移除不支持的参数
         weasyprint _temp/document.html _output/javascript-guide-enhanced.pdf \
-          -s _temp/enhanced.css \
-          --presentational-hints \
-          --optimize-size
+          -s _temp/enhanced.css
         
         echo "✅ 增强样式 PDF 生成完成"
         echo "PDF 文件信息: $(ls -lh _output/javascript-guide-enhanced.pdf)"
