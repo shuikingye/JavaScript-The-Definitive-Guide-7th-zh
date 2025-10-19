@@ -1,4 +1,4 @@
-name: Generate PDF with Enhanced Styling
+name: Generate PDF with Syntax Highlighting
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
           fonts-noto-cjk \
           fonts-noto-color-emoji \
           fonts-noto-mono
-        pip install weasyprint markdown
+        pip install weasyprint markdown pygments
 
     - name: Create Directories
       run: |
@@ -100,68 +100,31 @@ jobs:
         echo "✅ 合并文件创建完成"
         echo "文件大小: $(ls -lh _temp/combined.md)"
 
-    - name: Convert Markdown to HTML with Enhanced Template
+    - name: Convert Markdown to HTML with Syntax Highlighting
       run: |
-        echo "🎯 使用增强模板转换为 HTML..."
+        echo "🎯 转换为 HTML 并启用语法高亮..."
         
-        # 创建自定义 HTML 模板
-        cat > _temp/template.html << 'EOF'
-        <!DOCTYPE html>
-        <html lang="zh-CN">
-        <head>
-            <meta charset="utf-8">
-            <title>$title$</title>
-            <meta name="author" content="$author$">
-            <style>
-                /* 基础样式将在后面的CSS文件中定义 */
-            </style>
-        </head>
-        <body>
-            <div class="book">
-                $if(title)$
-                <header class="cover">
-                    <h1 class="title">$title$</h1>
-                    $if(author)$
-                    <p class="author">$author$</p>
-                    $endif$
-                    $if(date)$
-                    <p class="date">$date$</p>
-                    $endif$
-                </header>
-                $endif$
-                
-                $if(toc)$
-                <nav class="toc">
-                    <h2>目录</h2>
-                    $toc$
-                </nav>
-                $endif$
-                
-                <main class="content">
-                    $body$
-                </main>
-            </div>
-        </body>
-        </html>
-        EOF
-        
-        # 转换为 HTML
+        # 转换为 HTML，启用语法高亮
         pandoc "_temp/combined.md" -o "_temp/document.html" \
-          --template="_temp/template.html" \
           --toc \
           --toc-depth=3 \
           --self-contained \
+          --standalone \
           -M title="JavaScript权威指南第七版" \
           -M author="Richard-Billyham" \
-          --metadata lang=zh-CN
+          --metadata lang=zh-CN \
+          --highlight-style=pygments \
+          --css=https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css
         
-        echo "✅ HTML 转换完成"
+        echo "✅ HTML 转换完成，语法高亮已启用"
 
-    - name: Create Enhanced CSS Styling
+    - name: Create Enhanced CSS with Syntax Highlighting
       run: |
-        echo "🎨 创建增强的 CSS 样式..."
+        echo "🎨 创建带有语法高亮的 CSS 样式..."
         
         cat > _temp/enhanced.css << 'EOF'
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css');
+        
         @page {
           size: A4;
           margin: 2cm;
@@ -226,13 +189,6 @@ jobs:
           margin-bottom: 1cm;
           border-bottom: 3px solid #3498db;
           padding-bottom: 0.5cm;
-        }
-        
-        .cover .subtitle {
-          font-size: 16pt;
-          color: #7f8c8d;
-          margin-bottom: 2cm;
-          font-weight: normal;
         }
         
         .cover .author {
@@ -341,14 +297,6 @@ jobs:
           page-break-after: avoid;
         }
         
-        h4, h5, h6 {
-          font-size: 12pt;
-          color: #34495e;
-          margin-top: 0.8cm;
-          margin-bottom: 0.4cm;
-          page-break-after: avoid;
-        }
-        
         /* 段落和文本样式 */
         p {
           margin: 0.6em 0;
@@ -356,45 +304,25 @@ jobs:
           line-height: 1.7;
         }
         
-        strong {
-          color: #2c3e50;
-          font-weight: 600;
-        }
-        
-        em {
-          color: #34495e;
-          font-style: italic;
-        }
-        
-        /* 链接样式 */
-        a {
-          color: #3498db;
-          text-decoration: none;
-        }
-        
-        a:hover {
-          text-decoration: underline;
-        }
-        
-        /* 代码样式 */
+        /* 代码样式 - 增强语法高亮 */
         code {
           font-family: "Noto Sans Mono CJK SC", "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
-          background-color: #f8f9fa;
+          background-color: #f6f8fa;
           padding: 0.2em 0.4em;
-          border-radius: 4px;
+          border-radius: 3px;
           font-size: 10pt;
-          color: #e74c3c;
+          color: #24292e;
           border: 1px solid #e1e4e8;
         }
         
         pre {
-          background-color: #f8f9fa;
+          background-color: #f6f8fa;
           border: 1px solid #e1e4e8;
-          border-radius: 8px;
+          border-radius: 6px;
           padding: 1em;
           overflow: auto;
           font-size: 10pt;
-          line-height: 1.4;
+          line-height: 1.45;
           page-break-inside: avoid;
           margin: 1em 0;
         }
@@ -403,8 +331,79 @@ jobs:
           background: none;
           padding: 0;
           border: none;
-          color: #2c3e50;
+          color: inherit;
           font-size: 10pt;
+          white-space: pre;
+        }
+        
+        /* 覆盖 highlight.js 样式以更好地适应打印 */
+        .hljs {
+          background: #f6f8fa !important;
+          color: #24292e !important;
+        }
+        
+        .hljs-comment,
+        .hljs-quote {
+          color: #6a737d !important;
+          font-style: italic !important;
+        }
+        
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-literal {
+          color: #d73a49 !important;
+        }
+        
+        .hljs-string,
+        .hljs-doctag {
+          color: #032f62 !important;
+        }
+        
+        .hljs-number,
+        .hljs-regexp,
+        .hljs-variable {
+          color: #005cc5 !important;
+        }
+        
+        .hljs-title,
+        .hljs-built_in {
+          color: #6f42c1 !important;
+        }
+        
+        .hljs-function > .hljs-title {
+          color: #6f42c1 !important;
+        }
+        
+        .hljs-params {
+          color: #24292e !important;
+        }
+        
+        .hljs-type {
+          color: #d73a49 !important;
+        }
+        
+        .hljs-attr {
+          color: #005cc5 !important;
+        }
+        
+        .hljs-tag {
+          color: #22863a !important;
+        }
+        
+        .hljs-name {
+          color: #22863a !important;
+        }
+        
+        .hljs-attribute {
+          color: #6f42c1 !important;
+        }
+        
+        .hljs-symbol {
+          color: #e36209 !important;
+        }
+        
+        .hljs-meta {
+          color: #6a737d !important;
         }
         
         /* 引用块样式 */
@@ -415,10 +414,6 @@ jobs:
           background-color: #ecf0f1;
           color: #2c3e50;
           border-radius: 0 8px 8px 0;
-        }
-        
-        blockquote p {
-          margin: 0.5em 0;
         }
         
         /* 列表样式 */
@@ -460,35 +455,13 @@ jobs:
           background-color: #f8f9fa;
         }
         
-        /* 图片样式 */
-        img {
-          max-width: 100%;
-          height: auto;
-          display: block;
-          margin: 1em auto;
-          page-break-inside: avoid;
-          border-radius: 4px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
         /* 分页控制 */
-        .newpage {
-          page-break-before: always;
-        }
-        
-        /* 避免在标题前分页 */
         h1, h2, h3 {
           page-break-after: avoid;
         }
         
-        /* 确保代码块和表格不被分割 */
         pre, table, img {
           page-break-inside: avoid;
-        }
-        
-        /* 章节开始的空白控制 */
-        h1:first-child {
-          margin-top: 0.5cm;
         }
         
         /* 打印优化 */
@@ -504,23 +477,25 @@ jobs:
         }
         EOF
 
-    - name: Generate Enhanced PDF
+    - name: Generate PDF with Syntax Highlighting
       run: |
-        echo "🎯 生成增强样式的 PDF..."
+        echo "🎯 生成带有语法高亮的 PDF..."
         
-        # 使用 WeasyPrint 生成 PDF，移除不支持的参数
-        weasyprint _temp/document.html _output/javascript-guide-enhanced.pdf \
+        # 使用 WeasyPrint 生成 PDF
+        weasyprint _temp/document.html _output/javascript-guide-with-highlight.pdf \
           -s _temp/enhanced.css
         
-        echo "✅ 增强样式 PDF 生成完成"
-        echo "PDF 文件信息: $(ls -lh _output/javascript-guide-enhanced.pdf)"
+        echo "✅ 带有语法高亮的 PDF 生成完成"
+        echo "PDF 文件信息: $(ls -lh _output/javascript-guide-with-highlight.pdf)"
 
-    - name: Create Alternative Simple PDF
+    - name: Create Alternative with Different Highlight Theme
       run: |
-        echo "🔄 同时生成简洁版 PDF..."
+        echo "🎨 生成使用不同高亮主题的版本..."
         
-        # 创建简洁版 CSS
-        cat > _temp/simple.css << 'EOF'
+        # 创建使用 VS Code 暗色主题的 CSS
+        cat > _temp/vscode-dark.css << 'EOF'
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs2015.min.css');
+        
         @page {
           size: A4;
           margin: 2cm;
@@ -530,62 +505,47 @@ jobs:
           font-family: "Noto Sans CJK SC", sans-serif;
           font-size: 11pt;
           line-height: 1.6;
-          color: #000;
-        }
-        
-        h1, h2, h3 {
           color: #333;
-          page-break-after: avoid;
-        }
-        
-        h1 { font-size: 16pt; border-bottom: 1px solid #ccc; }
-        h2 { font-size: 14pt; }
-        h3 { font-size: 12pt; }
-        
-        code {
-          font-family: "Noto Sans Mono CJK SC", monospace;
-          background: #f5f5f5;
-          padding: 0.1em 0.3em;
         }
         
         pre {
-          background: #f5f5f5;
+          background-color: #1e1e1e !important;
+          border: 1px solid #444;
+          border-radius: 6px;
           padding: 1em;
-          border-radius: 4px;
           page-break-inside: avoid;
+        }
+        
+        .hljs {
+          background: #1e1e1e !important;
+        }
+        
+        h1, h2, h3 {
+          page-break-after: avoid;
         }
         EOF
         
-        # 生成简洁版
-        weasyprint _temp/document.html _output/javascript-guide-simple.pdf \
-          -s _temp/simple.css
+        # 生成使用 VS Code 暗色主题的版本
+        weasyprint _temp/document.html _output/javascript-guide-vscode-theme.pdf \
+          -s _temp/vscode-dark.css
         
-        echo "✅ 简洁版 PDF 生成完成"
+        echo "✅ VS Code 主题版本生成完成"
 
-    - name: Verify and Compare Results
+    - name: Verify Results
       run: |
         echo "📊 验证生成结果..."
         
-        echo "增强版 PDF:"
-        ls -lh _output/javascript-guide-enhanced.pdf
+        echo "GitHub 高亮主题 PDF:"
+        ls -lh _output/javascript-guide-with-highlight.pdf
         echo ""
-        echo "简洁版 PDF:"
-        ls -lh _output/javascript-guide-simple.pdf
-        
-        # 检查文件大小
-        enhanced_size=$(stat -c%s "_output/javascript-guide-enhanced.pdf")
-        simple_size=$(stat -c%s "_output/javascript-guide-simple.pdf")
-        
-        echo ""
-        echo "文件大小对比:"
-        echo "增强版: $((enhanced_size/1024)) KB"
-        echo "简洁版: $((simple_size/1024)) KB"
+        echo "VS Code 暗色主题 PDF:"
+        ls -lh _output/javascript-guide-vscode-theme.pdf
 
     - name: Upload PDF Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: JavaScript-Guide-PDFs
+        name: JavaScript-Guide-PDFs-with-Highlight
         path: |
-          _output/javascript-guide-enhanced.pdf
-          _output/javascript-guide-simple.pdf
+          _output/javascript-guide-with-highlight.pdf
+          _output/javascript-guide-vscode-theme.pdf
         retention-days: 30
