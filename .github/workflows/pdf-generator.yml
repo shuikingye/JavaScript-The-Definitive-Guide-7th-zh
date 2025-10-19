@@ -37,7 +37,8 @@ jobs:
           lmodern \
           fonts-noto-cjk \
           fonts-noto-color-emoji \
-          poppler-utils
+          poppler-utils \
+          python3-pygments  # minted 需要 Pygments
 
     - name: Find and Combine All Markdown Files
       id: combine_files
@@ -94,40 +95,87 @@ jobs:
         echo "行数统计:"
         wc -l _temp/combined.md
 
-    - name: Preprocess Markdown for LaTeX Compatibility
+    - name: Advanced Preprocessing for LaTeX
       run: |
-        echo "🔧 预处理 Markdown 文件以兼容 LaTeX..."
+        echo "🔧 高级预处理 Markdown 文件..."
         
         # 备份原始文件
         cp _temp/combined.md _temp/combined_backup.md
         
-        # 转义 LaTeX 特殊字符
-        sed -i 's/\\/\\\\textbackslash /g' _temp/combined.md
-        sed -i 's/#/\\#/g' _temp/combined.md
-        sed -i 's/\$/\\$/g' _temp/combined.md
-        sed -i 's/%/\\%/g' _temp/combined.md
-        sed -i 's/&/\\&/g' _temp/combined.md
-        sed -i 's/_/\\_/g' _temp/combined.md
-        sed -i 's/{/\\{/g' _temp/combined.md
-        sed -i 's/}/\\}/g' _temp/combined.md
-        sed -i 's/~/\\textasciitilde /g' _temp/combined.md
-        sed -i 's/\^/\\textasciicircum /g' _temp/combined.md
+        # 方法1: 使用更精确的转义处理
+        python3 << 'EOF'
+        import re
         
-        # 特别处理 \n 和其他转义序列
-        sed -i 's/\\n/\\\\n/g' _temp/combined.md
-        sed -i 's/\\t/\\\\t/g' _temp/combined.md
-        sed -i 's/\\r/\\\\r/g' _temp/combined.md
+        with open('_temp/combined.md', 'r', encoding='utf-8') as f:
+            content = f.read()
         
-        echo "✅ 预处理完成"
-
-    - name: Debug Problematic Section
-      run: |
-        echo "🐛 调试问题区域 (第2100-2110行):"
-        if [ -f "_temp/combined.md" ]; then
-          sed -n '2100,2110p' _temp/combined.md
+        # 转义 LaTeX 特殊字符，但在代码块中保持原样
+        lines = content.split('\n')
+        in_code_block = False
+        processed_lines = []
+        
+        for line in lines:
+            # 检测代码块开始/结束
+            if line.strip().startswith('```'):
+                in_code_block = not in_code_block
+                processed_lines.append(line)
+                continue
+            
+            if in_code_block:
+                # 在代码块中，我们保持内容不变
+                processed_lines.append(line)
+            else:
+                # 在普通文本中，转义特殊字符
+                # 先转义反斜杠
+                line = line.replace('\\', '\\\\textbackslash{}')
+                # 转义其他特殊字符
+                line = line.replace('#', '\\#')
+                line = line.replace('$', '\\$')
+                line = line.replace('%', '\\%')
+                line = line.replace('&', '\\&')
+                line = line.replace('_', '\\_')
+                line = line.replace('{', '\\{')
+                line = line.replace('}', '\\}')
+                line = line.replace('~', '\\textasciitilde{}')
+                line = line.replace('^', '\\textasciicircum{}')
+                processed_lines.append(line)
+        
+        processed_content = '\n'.join(processed_lines)
+        
+        with open('_temp/combined_processed.md', 'w', encoding='utf-8') as f:
+            f.write(processed_content)
+        
+        print("✅ Python 预处理完成")
+        EOF
+        
+        # 如果 Python 不可用，使用 sed 作为备用
+        if [ ! -f "_temp/combined_processed.md" ]; then
+          echo "使用 sed 备用预处理..."
+          cp _temp/combined_backup.md _temp/combined_processed.md
+          # 基本的转义处理
+          sed -i 's/\\/\\\\textbackslash{}/g' _temp/combined_processed.md
+          sed -i 's/#/\\#/g' _temp/combined_processed.md
+          sed -i 's/\$/\\$/g' _temp/combined_processed.md
+          sed -i 's/%/\\%/g' _temp/combined_processed.md
+          sed -i 's/&/\\&/g' _temp/combined_processed.md
+          sed -i 's/_/\\_/g' _temp/combined_processed.md
+          sed -i 's/{/\\{/g' _temp/combined_processed.md
+          sed -i 's/}/\\}/g' _temp/combined_processed.md
         fi
 
-    - name: Create Robust LaTeX Header
+    - name: Create Problem Debug Info
+      run: |
+        echo "🐛 调试问题区域 (第2100-2120行):"
+        if [ -f "_temp/combined_processed.md" ]; then
+          echo "处理后的文件:"
+          sed -n '2100,2120p' _temp/combined_processed.md
+        fi
+        if [ -f "_temp/combined_backup.md" ]; then
+          echo "原始文件:"
+          sed -n '2100,2120p' _temp/combined_backup.md
+        fi
+
+    - name: Create Robust LaTeX Header (No Minted)
       run: |
         mkdir -p _temp
         cat > _temp/header.tex << 'EOFEND'
@@ -137,7 +185,7 @@ jobs:
         \usepackage{hyperref}
         \usepackage{bookmark}
         \usepackage{listings}
-        \usepackage{minted}
+        \usepackage{fontspec}
         
         % 防止代码块中的特殊字符出错
         \usepackage[utf8]{inputenc}
@@ -177,7 +225,7 @@ jobs:
           citecolor=green
         }
         
-        % 代码列表设置 - 更兼容的设置
+        % 代码列表设置 - 避免使用 minted
         \lstset{
           basicstyle=\ttfamily\footnotesize,
           breaklines=true,
@@ -188,24 +236,52 @@ jobs:
           belowcaptionskip=10pt,
           xleftmargin=10pt,
           xrightmargin=10pt,
-          escapeinside={\%*}{*)}, % 允许在代码中插入LaTeX
-          upquote=true, % 确保直引号
-          showstringspaces=false
+          upquote=true,
+          showstringspaces=false,
+          literate={\\\}{{\textbackslash}}1 % 正确处理反斜杠
         }
         
-        % 处理内联代码
-        \newcommand{\code}[1]{\texttt{#1}}
+        % 定义 JavaScript 语法高亮
+        \lstdefinelanguage{JavaScript}{
+          keywords={typeof, new, true, false, catch, function, return, null, catch, switch, var, if, in, while, do, else, case, break},
+          keywordstyle=\color{blue}\bfseries,
+          ndkeywords={class, export, boolean, throw, implements, import, this},
+          ndkeywordstyle=\color{darkgray}\bfseries,
+          identifierstyle=\color{black},
+          sensitive=false,
+          comment=[l]{//},
+          morecomment=[s]{/*}{*/},
+          commentstyle=\color{purple}\ttfamily,
+          stringstyle=\color{red}\ttfamily,
+          morestring=[b]',
+          morestring=[b]"
+        }
+        
+        \lstset{
+          language=JavaScript,
+          extendedchars=true,
+          basicstyle=\footnotesize\ttfamily,
+          showstringspaces=false,
+          showspaces=false,
+          numbers=left,
+          numberstyle=\footnotesize,
+          numbersep=9pt,
+          tabsize=2,
+          breaklines=true,
+          showtabs=false,
+          captionpos=b
+        }
         EOFEND
 
-    - name: Generate PDF with Robust Settings
+    - name: Generate PDF with Safe Settings
       run: |
         WORKSPACE_PATH="${{ github.workspace }}"
         
-        echo "🎯 开始生成PDF (使用更稳健的设置)..."
-        echo "输入文件大小: $(ls -lh _temp/combined.md)"
+        echo "🎯 开始生成PDF (安全设置)..."
+        echo "输入文件大小: $(ls -lh _temp/combined_processed.md)"
         
-        # 使用更稳健的pandoc设置
-        pandoc "_temp/combined.md" -o "_output/javascript-guide.pdf" \
+        # 使用安全的pandoc设置，避免minted
+        pandoc "_temp/combined_processed.md" -o "_output/javascript-guide.pdf" \
           --metadata title="JavaScript权威指南第七版" \
           --metadata author="Richard-Billyham" \
           --table-of-contents \
@@ -233,13 +309,28 @@ jobs:
         
         echo "✅ PDF生成命令执行完成"
 
-    - name: Fallback PDF Generation (if main method fails)
+    - name: Alternative PDF Generation Method
       if: failure()
       run: |
-        echo "🔄 尝试备用PDF生成方法..."
+        echo "🔄 尝试替代PDF生成方法..."
         WORKSPACE_PATH="${{ github.workspace }}"
         
-        # 简化设置，避免复杂特性
+        # 创建极简header
+        cat > _temp/minimal_header.tex << 'EOF'
+        \usepackage{fontspec}
+        \usepackage{hyperref}
+        \hypersetup{
+          pdfauthor={Richard-Billyham},
+          pdftitle={JavaScript权威指南第七版},
+          colorlinks=true,
+          linkcolor=blue,
+          urlcolor=cyan
+        }
+        \usepackage{geometry}
+        \geometry{a4paper, margin=2.5cm}
+        EOF
+        
+        # 使用极简设置生成PDF
         pandoc "_temp/combined_backup.md" -o "_output/javascript-guide-simple.pdf" \
           --metadata title="JavaScript权威指南第七版" \
           --metadata author="Richard-Billyham" \
@@ -251,36 +342,54 @@ jobs:
           -V geometry:a4paper \
           -V papersize=a4 \
           -V fontsize=11pt \
-          --highlight-style=kate
+          --include-in-header="$WORKSPACE_PATH/_temp/minimal_header.tex" \
+          --highlight-style=haddock
         
-        echo "✅ 备用PDF生成完成"
+        echo "✅ 替代PDF生成完成"
+
+    - name: Final PDF Generation Attempt
+      if: failure()
+      run: |
+        echo "🔄 最终尝试：基本PDF生成..."
+        
+        # 最基本的PDF生成，不使用任何高级特性
+        pandoc "_temp/combined_backup.md" -o "_output/javascript-guide-basic.pdf" \
+          --metadata title="JavaScript权威指南第七版" \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm \
+          -V papersize=a4
+        
+        echo "✅ 基本PDF生成完成"
 
     - name: Verify PDF Generation
       run: |
         echo "📊 验证PDF文件..."
-        # 检查主PDF或备用PDF
-        if [ -f "_output/javascript-guide.pdf" ]; then
-          PDF_FILE="_output/javascript-guide.pdf"
-        elif [ -f "_output/javascript-guide-simple.pdf" ]; then
-          PDF_FILE="_output/javascript-guide-simple.pdf"
-        else
-          echo "❌ 没有找到PDF文件"
+        # 检查任何生成的PDF
+        for pdf in "_output/javascript-guide.pdf" "_output/javascript-guide-simple.pdf" "_output/javascript-guide-basic.pdf"; do
+          if [ -f "$pdf" ]; then
+            echo "找到PDF: $pdf"
+            PDF_SIZE=$(stat -c%s "$pdf")
+            echo "文件大小: $PDF_SIZE 字节 ($(echo "scale=2; $PDF_SIZE/1024/1024" | bc) MB)"
+            
+            if command -v pdfinfo >/dev/null 2>&1; then
+              echo "PDF 信息:"
+              pdfinfo "$pdf" | head -10 || echo "无法读取PDF详细信息"
+            fi
+            
+            if [ "$PDF_SIZE" -lt 102400 ]; then
+              echo "⚠️  警告: $pdf 文件可能太小"
+            else
+              echo "✅ $pdf 文件大小正常"
+              MAIN_PDF="$pdf"
+            fi
+            echo "---"
+          fi
+        done
+        
+        if [ -z "$MAIN_PDF" ]; then
+          echo "❌ 没有找到有效的PDF文件"
           exit 1
-        fi
-        
-        PDF_SIZE=$(stat -c%s "$PDF_FILE")
-        echo "PDF 文件大小: $PDF_SIZE 字节 ($(echo "scale=2; $PDF_SIZE/1024/1024" | bc) MB)"
-        
-        if command -v pdfinfo >/dev/null 2>&1; then
-          echo "📄 PDF 信息:"
-          pdfinfo "$PDF_FILE" || echo "无法读取PDF详细信息"
-        fi
-        
-        if [ "$PDF_SIZE" -lt 102400 ]; then
-          echo "⚠️  警告: PDF 文件可能太小，内容可能不完整"
-          exit 1
-        else
-          echo "✅ PDF 文件大小正常"
         fi
 
     - name: Upload PDF Artifact
@@ -290,4 +399,5 @@ jobs:
         path: |
           _output/javascript-guide.pdf
           _output/javascript-guide-simple.pdf
+          _output/javascript-guide-basic.pdf
         retention-days: 30
