@@ -26,11 +26,21 @@ jobs:
           fonts-noto-color-emoji
         pip install weasyprint markdown
 
-    - name: Create Combined Markdown and Convert to HTML
+    - name: Create Directories
       run: |
-        echo "🎯 创建 HTML 文档..."
+        echo "📁 创建必要的目录..."
+        mkdir -p _temp _output
+        echo "目录创建完成:"
+        ls -la
+
+    - name: Create Combined Markdown File
+      run: |
+        echo "📝 创建合并的 Markdown 文件..."
         
-        # 创建合并的 Markdown
+        # 确保目录存在
+        mkdir -p _temp _output
+        
+        # 创建合并文件
         {
           echo "# JavaScript权威指南第七版"
           echo ""
@@ -40,23 +50,46 @@ jobs:
           echo ""
         } > _temp/combined.md
         
+        # 添加 README
         if [ -f "README.md" ]; then
+          echo "添加 README.md"
           cat "README.md" >> _temp/combined.md
           echo "" >> _temp/combined.md
           echo "---" >> _temp/combined.md
           echo "" >> _temp/combined.md
+        else
+          echo "⚠️ README.md 不存在"
         fi
         
+        # 按顺序添加章节
         for i in {1..17}; do
-          if [ -f "./docs/ch${i}.md" ]; then
+          chapter_file="./docs/ch${i}.md"
+          if [ -f "$chapter_file" ]; then
+            echo "添加章节: $chapter_file"
             echo "# 第${i}章" >> _temp/combined.md
             echo "" >> _temp/combined.md
-            cat "./docs/ch${i}.md" >> _temp/combined.md
+            cat "$chapter_file" >> _temp/combined.md
             echo "" >> _temp/combined.md
             echo "---" >> _temp/combined.md
             echo "" >> _temp/combined.md
+          else
+            echo "⚠️ 章节不存在: $chapter_file"
           fi
         done
+        
+        echo "✅ 合并文件创建完成"
+        echo "文件大小: $(ls -lh _temp/combined.md)"
+        echo "文件行数: $(wc -l < _temp/combined.md)"
+
+    - name: Convert Markdown to HTML
+      run: |
+        echo "🎯 将 Markdown 转换为 HTML..."
+        
+        # 检查文件是否存在
+        if [ ! -f "_temp/combined.md" ]; then
+          echo "❌ _temp/combined.md 不存在"
+          exit 1
+        fi
         
         # 使用 Pandoc 转换为 HTML
         pandoc "_temp/combined.md" -o "_temp/document.html" \
@@ -64,41 +97,217 @@ jobs:
           --toc-depth=3 \
           --self-contained \
           --css=https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css \
-          -V title="JavaScript权威指南第七版" \
-          -V author="Richard-Billyham" \
-          -V lang=zh-CN
+          -M title="JavaScript权威指南第七版" \
+          -M author="Richard-Billyham" \
+          -M date="$(date +%Y-%m-%d)" \
+          --metadata lang=zh-CN
         
         echo "✅ HTML 文档创建完成"
+        echo "HTML 文件大小: $(ls -lh _temp/document.html)"
+
+    - name: Create Custom CSS
+      run: |
+        echo "🎨 创建自定义 CSS..."
+        
+        cat > _temp/custom.css << 'EOF'
+        @page {
+          size: A4;
+          margin: 2.5cm;
+          @bottom-center {
+            content: "第 " counter(page) " 页";
+            font-family: "Noto Sans CJK SC", sans-serif;
+            font-size: 10pt;
+          }
+        }
+        
+        body {
+          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          color: #333;
+        }
+        
+        .markdown-body {
+          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          max-width: none;
+          margin: 0;
+          padding: 0;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
+          color: #2c3e50;
+          page-break-after: avoid;
+        }
+        
+        h1 {
+          font-size: 24pt;
+          border-bottom: 2px solid #3498db;
+          padding-bottom: 0.3em;
+        }
+        
+        h2 {
+          font-size: 20pt;
+          border-bottom: 1px solid #ecf0f1;
+          padding-bottom: 0.3em;
+        }
+        
+        code {
+          font-family: "Noto Sans Mono CJK SC", monospace;
+          background-color: #f8f9fa;
+          padding: 0.2em 0.4em;
+          border-radius: 3px;
+          font-size: 11pt;
+        }
+        
+        pre {
+          background-color: #f8f9fa;
+          border: 1px solid #e1e4e8;
+          border-radius: 6px;
+          padding: 16px;
+          overflow: auto;
+          font-size: 11pt;
+          page-break-inside: avoid;
+        }
+        
+        pre code {
+          background: none;
+          padding: 0;
+        }
+        
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin: 1em 0;
+          page-break-inside: avoid;
+        }
+        
+        th, td {
+          border: 1px solid #dfe2e5;
+          padding: 6px 13px;
+          text-align: left;
+        }
+        
+        th {
+          background-color: #f6f8fa;
+          font-weight: 600;
+        }
+        
+        blockquote {
+          border-left: 4px solid #dfe2e5;
+          margin: 1em 0;
+          padding: 0 1em;
+          color: #6a737d;
+          background-color: #fafbfc;
+        }
+        
+        a {
+          color: #0366d6;
+          text-decoration: none;
+        }
+        
+        a:hover {
+          text-decoration: underline;
+        }
+        
+        /* 目录样式 */
+        #TOC {
+          background: #f8f9fa;
+          border: 1px solid #e1e4e8;
+          border-radius: 6px;
+          padding: 1em;
+          margin-bottom: 2em;
+        }
+        
+        #TOC ul {
+          list-style-type: none;
+          padding-left: 1em;
+        }
+        
+        #TOC > ul {
+          padding-left: 0;
+        }
+        
+        #TOC li {
+          margin: 0.5em 0;
+        }
+        
+        #TOC a {
+          color: #0366d6;
+        }
+        
+        /* 避免在标题前分页 */
+        h1, h2, h3 {
+          page-break-before: avoid;
+        }
+        
+        /* 确保代码块不被分割 */
+        pre {
+          page-break-inside: avoid;
+        }
+        
+        /* 图片处理 */
+        img {
+          max-width: 100%;
+          height: auto;
+          page-break-inside: avoid;
+        }
+        EOF
+        
+        echo "✅ 自定义 CSS 创建完成"
 
     - name: Convert HTML to PDF with WeasyPrint
       run: |
         echo "🎯 使用 WeasyPrint 生成 PDF..."
         
-        # 创建自定义 CSS 以确保中文字体
-        cat > _temp/custom.css << 'EOF'
-        @page {
-          size: A4;
-          margin: 2.5cm;
-        }
-        body {
-          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
-        }
-        .markdown-body {
-          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
-          font-size: 14px;
-          line-height: 1.6;
-        }
-        EOF
+        # 检查 HTML 文件是否存在
+        if [ ! -f "_temp/document.html" ]; then
+          echo "❌ _temp/document.html 不存在"
+          exit 1
+        fi
         
         # 使用 WeasyPrint 生成 PDF
-        weasyprint _temp/document.html _output/javascript-guide-weasyprint.pdf \
-          -s _temp/custom.css
+        weasyprint _temp/document.html _output/javascript-guide.pdf \
+          -s _temp/custom.css \
+          --presentational-hints
         
         echo "✅ WeasyPrint PDF 生成完成"
+        echo "PDF 文件大小: $(ls -lh _output/javascript-guide.pdf)"
+
+    - name: Verify PDF Generation
+      run: |
+        echo "📊 验证 PDF 生成..."
+        
+        if [ ! -f "_output/javascript-guide.pdf" ]; then
+          echo "❌ PDF 文件未生成"
+          exit 1
+        fi
+        
+        PDF_SIZE=$(stat -c%s "_output/javascript-guide.pdf")
+        echo "PDF 文件大小: $PDF_SIZE 字节 ($(echo "scale=2; $PDF_SIZE/1024/1024" | bc) MB)"
+        
+        if [ "$PDF_SIZE" -lt 102400 ]; then
+          echo "⚠️ 警告: PDF 文件可能太小"
+        else
+          echo "✅ PDF 文件大小正常"
+        fi
 
     - name: Upload PDF Artifact
       uses: actions/upload-artifact@v4
       with:
         name: JavaScript-Guide-PDF
-        path: _output/javascript-guide-weasyprint.pdf
+        path: _output/javascript-guide.pdf
         retention-days: 30
+
+    - name: Upload Debug Files
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Debug-Files
+        path: |
+          _temp/combined.md
+          _temp/document.html
+          _temp/custom.css
+        retention-days: 7
