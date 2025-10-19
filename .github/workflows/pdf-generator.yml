@@ -1,4 +1,4 @@
-name: Generate PDF from Markdown
+name: Generate PDF from JavaScript Guide
 
 on:
   push:
@@ -20,10 +20,8 @@ jobs:
         echo "📁 设置工作环境..."
         mkdir -p _output _temp
         echo "当前目录: $(pwd)"
-        echo "目录内容:"
-        ls -la
-        echo "Markdown 文件:"
-        find . -name "*.md" -type f | head -20
+        echo "项目结构:"
+        find . -name "*.md" -type f | sort
 
     - name: Install Dependencies
       run: |
@@ -37,111 +35,147 @@ jobs:
           fonts-noto-color-emoji \
           poppler-utils
 
-    - name: Create Complete Markdown File
-      id: create_md
+    - name: Create Structured Markdown File
       run: |
-        echo "📝 创建完整的Markdown文件..."
+        echo "📝 创建结构化Markdown文件..."
         
-        # 确保_temp目录存在
-        mkdir -p _temp
+        # 创建封面和目录
+        cat > _temp/complete.md << 'EOF'
+        # JavaScript权威指南第七版
         
-        # 创建基础文件
-        echo "# JavaScript权威指南第七版" > _temp/complete.md
-        echo "" >> _temp/complete.md
-        echo "**作者: Richard-Billyham**" >> _temp/complete.md
-        echo "" >> _temp/complete.md
-        echo "***" >> _temp/complete.md
-        echo "" >> _temp/complete.md
+        **作者: Richard-Billyham**
         
-        # 添加README.md
+        **生成时间: $(date)**
+        
+        ***
+        
+        ## 目录
+        
+        EOF
+        
+        # 添加README.md内容
         if [ -f "README.md" ]; then
-          echo "添加 README.md"
+          echo "添加简介..."
+          echo "# 简介" >> _temp/complete.md
+          echo "" >> _temp/complete.md
           cat "README.md" >> _temp/complete.md
           echo "" >> _temp/complete.md
           echo "\\newpage" >> _temp/complete.md
           echo "" >> _temp/complete.md
-        else
-          echo "⚠️  README.md 不存在"
         fi
         
-        # 查找并添加其他markdown文件
-        echo "查找其他Markdown文件..."
-        find . -name "*.md" -type f \
-          ! -path "./.git/*" \
-          ! -path "./node_modules/*" \
-          ! -path "./_output/*" \
-          ! -path "./_temp/*" \
-          ! -name "README.md" \
-          ! -name "CONTRIBUTING.md" \
-          ! -name "CHANGELOG.md" > _temp/file_list.txt
+        # 按正确顺序添加章节
+        chapters=(
+          "./docs/ch1.md"
+          "./docs/ch2.md" 
+          "./docs/ch3.md"
+          "./docs/ch4.md"
+          "./docs/ch5.md"
+          "./docs/ch6.md"
+          "./docs/ch7.md"
+          "./docs/ch8.md"
+          "./docs/ch9.md"
+          "./docs/ch10.md"
+          "./docs/ch11.md"
+          "./docs/ch12.md"
+          "./docs/ch13.md"
+          "./docs/ch14.md"
+          "./docs/ch15.md"
+          "./docs/ch16.md"
+          "./docs/ch17.md"
+        )
         
-        if [ -s "_temp/file_list.txt" ]; then
-          echo "找到以下文件:"
-          cat _temp/file_list.txt
-          
-          # 按数字排序
-          sort -V _temp/file_list.txt > _temp/sorted_files.txt
-          
-          while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              echo "添加: $file"
-              echo "# $(basename "$file" .md)" >> _temp/complete.md
-              echo "" >> _temp/complete.md
-              cat "$file" >> _temp/complete.md
-              echo "" >> _temp/complete.md
-              echo "\\newpage" >> _temp/complete.md
-              echo "" >> _temp/complete.md
-            fi
-          done < _temp/sorted_files.txt
-        else
-          echo "⚠️  没有找到其他Markdown文件"
-        fi
+        for chapter in "${chapters[@]}"; do
+          if [ -f "$chapter" ]; then
+            echo "添加章节: $chapter"
+            # 提取章节标题
+            title=$(basename "$chapter" .md | sed 's/ch/第/' | sed 's/$/章/')
+            echo "# $title" >> _temp/complete.md
+            echo "" >> _temp/complete.md
+            cat "$chapter" >> _temp/complete.md
+            echo "" >> _temp/complete.md
+            echo "\\newpage" >> _temp/complete.md
+            echo "" >> _temp/complete.md
+          else
+            echo "⚠️  章节不存在: $chapter"
+          fi
+        done
         
-        # 验证文件创建
-        if [ ! -f "_temp/complete.md" ]; then
-          echo "❌ 未能创建 _temp/complete.md"
-          exit 1
-        fi
-        
-        echo "✅ 文件创建成功"
+        echo "✅ 文件创建完成"
         echo "文件大小: $(ls -lh _temp/complete.md)"
-        echo "行数: $(wc -l < _temp/complete.md)"
 
-    - name: Method 1 - Simple Pandoc
+    - name: Create Safe LaTeX Header
       run: |
-        echo "🎯 方法1: 简单Pandoc转换..."
+        echo "📄 创建安全的LaTeX头文件..."
+        mkdir -p _temp
         
-        if [ ! -f "_temp/complete.md" ]; then
-          echo "❌ _temp/complete.md 不存在"
-          exit 1
-        fi
+        cat > _temp/header.tex << 'EOF'
+        \usepackage{fontspec}
+        \setmainfont{Noto Sans CJK SC}
+        \usepackage{geometry}
+        \geometry{a4paper, margin=2.5cm}
+        \usepackage{titlesec}
+        \usepackage{fancyhdr}
+        \usepackage{xcolor}
+        \usepackage{hyperref}
         
-        # 最简单的pandoc命令
-        pandoc "_temp/complete.md" -o "_output/method1-simple.pdf" \
+        % 章节样式
+        \titleformat{\chapter}
+          {\normalfont\Huge\bfseries}{\thechapter}{1em}{}
+        \titleformat{\section}
+          {\normalfont\Large\bfseries}{\thesection}{1em}{}
+          
+        % 页眉页脚
+        \pagestyle{fancy}
+        \fancyhf{}
+        \fancyhead[L]{\leftmark}
+        \fancyhead[R]{\thepage}
+        
+        % 超链接设置
+        \hypersetup{
+          colorlinks=true,
+          linkcolor=blue,
+          urlcolor=cyan,
+          pdftitle={JavaScript权威指南第七版},
+          pdfauthor={Richard-Billyham}
+        }
+        
+        % 处理代码块中的特殊字符
+        \usepackage{listings}
+        \lstset{
+          basicstyle=\ttfamily\small,
+          breaklines=true,
+          frame=single,
+          backgroundcolor=\color{gray!5},
+          escapeinside={\%*}{*)},  % 允许在代码中插入LaTeX
+          upquote=true  % 正确处理引号
+        }
+        EOF
+
+    - name: Generate PDF - Method 1 (Direct)
+      run: |
+        echo "🎯 方法1: 直接生成PDF..."
+        
+        pandoc "_temp/complete.md" -o "_output/javascript-guide.pdf" \
           --pdf-engine=xelatex \
           -V mainfont="Noto Sans CJK SC" \
           -V geometry:margin=2.5cm \
           -V papersize=a4 \
           --table-of-contents \
-          --toc-depth=2
+          --toc-depth=3 \
+          -M title="JavaScript权威指南第七版" \
+          -M author="Richard-Billyham"
         
         echo "✅ 方法1完成"
 
-    - name: Method 2 - With Metadata
+    - name: Generate PDF - Method 2 (With Header)
+      if: failure()
       run: |
-        echo "🎯 方法2: 带元数据的转换..."
+        echo "🎯 方法2: 使用头文件生成PDF..."
         
-        if [ ! -f "_temp/complete.md" ]; then
-          echo "❌ _temp/complete.md 不存在"
-          exit 1
-        fi
-        
-        pandoc "_temp/complete.md" -o "_output/method2-with-metadata.pdf" \
+        pandoc "_temp/complete.md" -o "_output/javascript-guide-with-header.pdf" \
           --pdf-engine=xelatex \
-          -V mainfont="Noto Sans CJK SC" \
-          -V geometry:margin=2.5cm \
-          -V papersize=a4 \
-          -V fontsize=12pt \
+          --include-in-header="${{ github.workspace }}/_temp/header.tex" \
           --table-of-contents \
           --toc-depth=3 \
           -M title="JavaScript权威指南第七版" \
@@ -149,135 +183,52 @@ jobs:
         
         echo "✅ 方法2完成"
 
-    - name: Method 3 - Escape Special Characters
+    - name: Generate PDF - Method 3 (Minimal)
+      if: failure()
       run: |
-        echo "🎯 方法3: 转义特殊字符..."
+        echo "🎯 方法3: 最小化设置..."
         
-        if [ ! -f "_temp/complete.md" ]; then
-          echo "❌ _temp/complete.md 不存在"
-          exit 1
-        fi
+        # 只处理前几章来测试
+        head -n 1000 "_temp/complete.md" > "_temp/test.md"
         
-        # 创建转义版本
-        cp "_temp/complete.md" "_temp/complete_escaped.md"
-        
-        # 转义反斜杠（主要问题）
-        sed -i 's/\\/\\\\/g' "_temp/complete_escaped.md"
-        
-        # 转义其他LaTeX特殊字符
-        sed -i 's/#/\\#/g' "_temp/complete_escaped.md"
-        sed -i 's/\$/\\$/g' "_temp/complete_escaped.md"
-        sed -i 's/%/\\%/g' "_temp/complete_escaped.md"
-        sed -i 's/&/\\&/g' "_temp/complete_escaped.md"
-        sed -i 's/_/\\_/g' "_temp/complete_escaped.md"
-        
-        pandoc "_temp/complete_escaped.md" -o "_output/method3-escaped.pdf" \
-          --pdf-engine=xelatex \
-          -V mainfont="Noto Sans CJK SC" \
-          -V geometry:margin=2.5cm \
-          -V papersize=a4 \
-          --table-of-contents
-        
-        echo "✅ 方法3完成"
-
-    - name: Method 4 - Use Listings for Code
-      run: |
-        echo "🎯 方法4: 使用listings处理代码..."
-        
-        if [ ! -f "_temp/complete.md" ]; then
-          echo "❌ _temp/complete.md 不存在"
-          exit 1
-        fi
-        
-        # 创建简单的LaTeX头文件
-        mkdir -p _temp
-        cat > _temp/header.tex << 'EOF'
-        \usepackage{listings}
-        \usepackage{xcolor}
-        
-        \lstset{
-          basicstyle=\ttfamily\small,
-          breaklines=true,
-          frame=single,
-          backgroundcolor=\color{gray!5},
-          numbers=left
-        }
-        EOF
-        
-        pandoc "_temp/complete.md" -o "_output/method4-listings.pdf" \
-          --pdf-engine=xelatex \
-          -V mainfont="Noto Sans CJK SC" \
-          -V geometry:margin=2.5cm \
-          -V papersize=a4 \
-          --table-of-contents \
-          --listings \
-          --include-in-header="${{ github.workspace }}/_temp/header.tex"
-        
-        echo "✅ 方法4完成"
-
-    - name: Method 5 - Minimal Approach
-      run: |
-        echo "🎯 方法5: 最小化方法..."
-        
-        if [ ! -f "_temp/complete.md" ]; then
-          echo "❌ _temp/complete.md 不存在"
-          exit 1
-        fi
-        
-        # 只转换前N行来测试
-        head -n 5000 "_temp/complete.md" > "_temp/minimal_test.md"
-        
-        pandoc "_temp/minimal_test.md" -o "_output/method5-minimal.pdf" \
+        pandoc "_temp/test.md" -o "_output/javascript-guide-test.pdf" \
           --pdf-engine=xelatex \
           -V mainfont="Noto Sans CJK SC" \
           -V geometry:margin=2.5cm
         
-        echo "✅ 方法5完成"
+        echo "✅ 方法3完成"
 
-    - name: Verify Results
+    - name: Check and Upload Results
       run: |
-        echo "📊 验证生成结果..."
+        echo "📊 检查生成结果..."
         
-        # 检查_output目录
-        echo "输出目录内容:"
-        ls -la _output/ || echo "输出目录不存在"
-        
-        # 检查生成的PDF文件
-        shopt -s nullglob
-        pdf_count=0
+        # 检查所有PDF文件
+        success=false
         for pdf in _output/*.pdf; do
           if [ -f "$pdf" ]; then
             size=$(stat -c%s "$pdf")
             echo "✅ 找到: $pdf ($((size/1024)) KB)"
-            pdf_count=$((pdf_count+1))
+            if [ $size -gt 102400 ]; then  # 大于100KB
+              success=true
+              echo "🎉 找到有效的PDF文件: $pdf"
+            fi
           fi
         done
         
-        if [ $pdf_count -eq 0 ]; then
-          echo "❌ 没有生成任何PDF文件"
+        if [ "$success" = false ]; then
+          echo "❌ 没有生成有效的PDF文件"
           echo "调试信息:"
-          echo "工作目录: $(pwd)"
-          echo "_temp目录内容:"
-          ls -la _temp/ || echo "_temp目录不存在"
-          echo "complete.md前10行:"
-          head -10 _temp/complete.md || echo "无法读取complete.md"
+          echo "complete.md 前20行:"
+          head -20 "_temp/complete.md"
+          echo ""
+          echo "complete.md 最后10行:"
+          tail -10 "_temp/complete.md"
           exit 1
-        else
-          echo "🎉 成功生成 $pdf_count 个PDF文件"
         fi
 
     - name: Upload PDF Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Generated-PDFs
+        name: JavaScript-Guide-PDF
         path: _output/*.pdf
         retention-days: 30
-
-    - name: Upload Debug Info
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: Debug-Info
-        path: |
-          _temp/
-        retention-days: 7
