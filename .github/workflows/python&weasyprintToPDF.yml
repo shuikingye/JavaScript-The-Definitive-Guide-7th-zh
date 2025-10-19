@@ -1,4 +1,4 @@
-name: Generate PDF with Python and WeasyPrint
+name: Generate PDF with Enhanced Styling
 
 on:
   push:
@@ -23,42 +23,53 @@ jobs:
         sudo apt-get install -y \
           pandoc \
           fonts-noto-cjk \
-          fonts-noto-color-emoji
+          fonts-noto-color-emoji \
+          fonts-noto-mono
         pip install weasyprint markdown
 
     - name: Create Directories
       run: |
-        echo "📁 创建必要的目录..."
         mkdir -p _temp _output
-        echo "目录创建完成:"
-        ls -la
 
     - name: Create Combined Markdown File
       run: |
         echo "📝 创建合并的 Markdown 文件..."
         
-        # 确保目录存在
-        mkdir -p _temp _output
+        # 创建封面和目录结构
+        cat > _temp/combined.md << 'EOF'
+        ---
+        title: "JavaScript权威指南第七版"
+        author: "Richard-Billyham"
+        date: "$(date +%Y年%m月%d日)"
+        ---
         
-        # 创建合并文件
-        {
-          echo "# JavaScript权威指南第七版"
-          echo ""
-          echo "**作者: Richard-Billyham**"
-          echo ""
-          echo "---"
-          echo ""
-        } > _temp/combined.md
+        # JavaScript权威指南第七版
         
-        # 添加 README
+        <div style="text-align: center; margin: 5cm 0;">
+          <h1 style="font-size: 28pt; margin-bottom: 1cm;">JavaScript权威指南第七版</h1>
+          <h2 style="font-size: 18pt; color: #666; margin-bottom: 2cm;">JavaScript: The Definitive Guide, 7th Edition</h2>
+          <p style="font-size: 14pt;">作者: Richard-Billyham</p>
+          <p style="font-size: 12pt; color: #999;">生成时间: $(date +%Y年%m月%d日)</p>
+        </div>
+        
+        \newpage
+        
+        ## 目录
+        
+        <!-- 目录将由 Pandoc 自动生成 -->
+        
+        \newpage
+        
+        EOF
+        
+        # 添加 README 作为简介
         if [ -f "README.md" ]; then
-          echo "添加 README.md"
+          echo "# 简介" >> _temp/combined.md
+          echo "" >> _temp/combined.md
           cat "README.md" >> _temp/combined.md
           echo "" >> _temp/combined.md
-          echo "---" >> _temp/combined.md
+          echo "\newpage" >> _temp/combined.md
           echo "" >> _temp/combined.md
-        else
-          echo "⚠️ README.md 不存在"
         fi
         
         # 按顺序添加章节
@@ -66,145 +77,301 @@ jobs:
           chapter_file="./docs/ch${i}.md"
           if [ -f "$chapter_file" ]; then
             echo "添加章节: $chapter_file"
-            echo "# 第${i}章" >> _temp/combined.md
+            # 提取原始标题或使用默认标题
+            original_title=$(head -n 1 "$chapter_file" | sed -E 's/^#+ //' | head -1)
+            if [ -n "$original_title" ] && [ "$original_title" != "" ]; then
+              title="$original_title"
+            else
+              title="第${i}章"
+            fi
+            
+            echo "# $title" >> _temp/combined.md
             echo "" >> _temp/combined.md
-            cat "$chapter_file" >> _temp/combined.md
+            
+            # 跳过原文件的第一行（标题）
+            tail -n +2 "$chapter_file" >> _temp/combined.md
+            
             echo "" >> _temp/combined.md
-            echo "---" >> _temp/combined.md
+            echo "\newpage" >> _temp/combined.md
             echo "" >> _temp/combined.md
-          else
-            echo "⚠️ 章节不存在: $chapter_file"
           fi
         done
         
         echo "✅ 合并文件创建完成"
         echo "文件大小: $(ls -lh _temp/combined.md)"
-        echo "文件行数: $(wc -l < _temp/combined.md)"
 
-    - name: Convert Markdown to HTML
+    - name: Convert Markdown to HTML with Enhanced Template
       run: |
-        echo "🎯 将 Markdown 转换为 HTML..."
+        echo "🎯 使用增强模板转换为 HTML..."
         
-        # 检查文件是否存在
-        if [ ! -f "_temp/combined.md" ]; then
-          echo "❌ _temp/combined.md 不存在"
-          exit 1
-        fi
+        # 创建自定义 HTML 模板
+        cat > _temp/template.html << 'EOF'
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="utf-8">
+            <title>$title$</title>
+            <meta name="author" content="$author$">
+            <style>
+                /* 基础样式将在后面的CSS文件中定义 */
+            </style>
+        </head>
+        <body>
+            <div class="book">
+                $if(title)$
+                <header class="cover">
+                    <h1 class="title">$title$</h1>
+                    $if(author)$
+                    <p class="author">$author$</p>
+                    $endif$
+                    $if(date)$
+                    <p class="date">$date$</p>
+                    $endif$
+                </header>
+                $endif$
+                
+                $if(toc)$
+                <nav class="toc">
+                    <h2>目录</h2>
+                    $toc$
+                </nav>
+                $endif$
+                
+                <main class="content">
+                    $body$
+                </main>
+            </div>
+        </body>
+        </html>
+        EOF
         
-        # 使用 Pandoc 转换为 HTML
+        # 转换为 HTML
         pandoc "_temp/combined.md" -o "_temp/document.html" \
+          --template="_temp/template.html" \
           --toc \
           --toc-depth=3 \
           --self-contained \
-          --css=https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css \
           -M title="JavaScript权威指南第七版" \
           -M author="Richard-Billyham" \
-          -M date="$(date +%Y-%m-%d)" \
-          --metadata lang=zh-CN
+          --metadata lang=zh-CN \
+          --css=https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css
         
-        echo "✅ HTML 文档创建完成"
-        echo "HTML 文件大小: $(ls -lh _temp/document.html)"
+        echo "✅ HTML 转换完成"
 
-    - name: Create Custom CSS
+    - name: Create Enhanced CSS Styling
       run: |
-        echo "🎨 创建自定义 CSS..."
+        echo "🎨 创建增强的 CSS 样式..."
         
-        cat > _temp/custom.css << 'EOF'
+        cat > _temp/enhanced.css << 'EOF'
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css');
+        
         @page {
           size: A4;
-          margin: 2.5cm;
-          @bottom-center {
-            content: "第 " counter(page) " 页";
+          margin: 2cm;
+          
+          @top-left {
+            content: "JavaScript权威指南第七版";
             font-family: "Noto Sans CJK SC", sans-serif;
-            font-size: 10pt;
+            font-size: 9pt;
+            color: #666;
+          }
+          
+          @top-right {
+            content: counter(page);
+            font-family: "Noto Sans CJK SC", sans-serif;
+            font-size: 9pt;
+          }
+          
+          @bottom-center {
+            content: "--- 第 " counter(page) " 页 ---";
+            font-family: "Noto Sans CJK SC", sans-serif;
+            font-size: 8pt;
+            color: #999;
           }
         }
         
-        body {
-          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
-          font-size: 12pt;
-          line-height: 1.6;
-          color: #333;
+        @page :first {
+          @top-left { content: none; }
+          @top-right { content: none; }
+          @bottom-center { content: none; }
+          margin: 0;
         }
         
-        .markdown-body {
-          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
-          font-size: 12pt;
+        @page toc {
+          @top-left { content: "目录"; }
+        }
+        
+        /* 基础样式 */
+        body {
+          font-family: "Noto Sans CJK SC", "Source Han Sans CN", "PingFang SC", "Microsoft YaHei", sans-serif;
+          font-size: 11pt;
           line-height: 1.6;
-          max-width: none;
+          color: #333;
           margin: 0;
           padding: 0;
         }
         
-        h1, h2, h3, h4, h5, h6 {
-          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
+        /* 封面样式 */
+        .cover {
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          text-align: center;
+          page-break-after: always;
+        }
+        
+        .cover .title {
+          font-size: 28pt;
+          font-weight: bold;
           color: #2c3e50;
-          page-break-after: avoid;
+          margin-bottom: 1cm;
+          border-bottom: 3px solid #3498db;
+          padding-bottom: 0.5cm;
         }
         
-        h1 {
-          font-size: 24pt;
-          border-bottom: 2px solid #3498db;
-          padding-bottom: 0.3em;
+        .cover .subtitle {
+          font-size: 16pt;
+          color: #7f8c8d;
+          margin-bottom: 2cm;
+          font-weight: normal;
         }
         
-        h2 {
+        .cover .author {
+          font-size: 14pt;
+          color: #34495e;
+          margin-bottom: 0.5cm;
+        }
+        
+        .cover .date {
+          font-size: 11pt;
+          color: #95a5a6;
+        }
+        
+        /* 目录样式 */
+        .toc {
+          page-break-after: always;
+        }
+        
+        .toc h2 {
+          text-align: center;
           font-size: 20pt;
-          border-bottom: 1px solid #ecf0f1;
-          padding-bottom: 0.3em;
+          color: #2c3e50;
+          margin-bottom: 1cm;
+          border-bottom: 2px solid #3498db;
+          padding-bottom: 0.3cm;
         }
         
-        code {
-          font-family: "Noto Sans Mono CJK SC", monospace;
-          background-color: #f8f9fa;
-          padding: 0.2em 0.4em;
-          border-radius: 3px;
-          font-size: 11pt;
-        }
-        
-        pre {
-          background-color: #f8f9fa;
+        #TOC {
+          background: #f8f9fa;
           border: 1px solid #e1e4e8;
-          border-radius: 6px;
-          padding: 16px;
-          overflow: auto;
-          font-size: 11pt;
-          page-break-inside: avoid;
+          border-radius: 8px;
+          padding: 1.5cm;
+          margin: 1cm 0;
         }
         
-        pre code {
-          background: none;
+        #TOC ul {
+          list-style-type: none;
+          padding-left: 0;
+        }
+        
+        #TOC > ul > li {
+          margin: 0.7em 0;
+          font-weight: bold;
+        }
+        
+        #TOC > ul > li > a {
+          color: #2c3e50;
+          text-decoration: none;
+          font-size: 12pt;
+        }
+        
+        #TOC ul ul {
+          padding-left: 1.5em;
+          margin: 0.3em 0;
+        }
+        
+        #TOC ul ul li {
+          margin: 0.4em 0;
+          font-weight: normal;
+        }
+        
+        #TOC ul ul li a {
+          color: #34495e;
+          text-decoration: none;
+          font-size: 11pt;
+        }
+        
+        #TOC a:hover {
+          text-decoration: underline;
+          color: #3498db;
+        }
+        
+        /* 内容区域样式 */
+        .content {
+          max-width: 100%;
+          margin: 0;
           padding: 0;
         }
         
-        table {
-          border-collapse: collapse;
-          width: 100%;
-          margin: 1em 0;
-          page-break-inside: avoid;
+        /* 标题样式 */
+        h1 {
+          font-size: 20pt;
+          color: #2c3e50;
+          border-bottom: 2px solid #3498db;
+          padding-bottom: 0.3cm;
+          margin-top: 1.5cm;
+          margin-bottom: 1cm;
+          page-break-after: avoid;
         }
         
-        th, td {
-          border: 1px solid #dfe2e5;
-          padding: 6px 13px;
-          text-align: left;
+        h2 {
+          font-size: 16pt;
+          color: #34495e;
+          border-bottom: 1px solid #bdc3c7;
+          padding-bottom: 0.2cm;
+          margin-top: 1.2cm;
+          margin-bottom: 0.8cm;
+          page-break-after: avoid;
         }
         
-        th {
-          background-color: #f6f8fa;
+        h3 {
+          font-size: 14pt;
+          color: #2c3e50;
+          margin-top: 1cm;
+          margin-bottom: 0.6cm;
+          page-break-after: avoid;
+        }
+        
+        h4, h5, h6 {
+          font-size: 12pt;
+          color: #34495e;
+          margin-top: 0.8cm;
+          margin-bottom: 0.4cm;
+          page-break-after: avoid;
+        }
+        
+        /* 段落和文本样式 */
+        p {
+          margin: 0.6em 0;
+          text-align: justify;
+          line-height: 1.7;
+        }
+        
+        strong {
+          color: #2c3e50;
           font-weight: 600;
         }
         
-        blockquote {
-          border-left: 4px solid #dfe2e5;
-          margin: 1em 0;
-          padding: 0 1em;
-          color: #6a737d;
-          background-color: #fafbfc;
+        em {
+          color: #34495e;
+          font-style: italic;
         }
         
+        /* 链接样式 */
         a {
-          color: #0366d6;
+          color: #3498db;
           text-decoration: none;
         }
         
@@ -212,102 +379,218 @@ jobs:
           text-decoration: underline;
         }
         
-        /* 目录样式 */
-        #TOC {
-          background: #f8f9fa;
+        /* 代码样式 */
+        code {
+          font-family: "Noto Sans Mono CJK SC", "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
+          background-color: #f8f9fa;
+          padding: 0.2em 0.4em;
+          border-radius: 4px;
+          font-size: 10pt;
+          color: #e74c3c;
           border: 1px solid #e1e4e8;
-          border-radius: 6px;
+        }
+        
+        pre {
+          background-color: #f8f9fa;
+          border: 1px solid #e1e4e8;
+          border-radius: 8px;
           padding: 1em;
-          margin-bottom: 2em;
+          overflow: auto;
+          font-size: 10pt;
+          line-height: 1.4;
+          page-break-inside: avoid;
+          margin: 1em 0;
         }
         
-        #TOC ul {
-          list-style-type: none;
-          padding-left: 1em;
+        pre code {
+          background: none;
+          padding: 0;
+          border: none;
+          color: #2c3e50;
+          font-size: 10pt;
         }
         
-        #TOC > ul {
-          padding-left: 0;
+        /* 引用块样式 */
+        blockquote {
+          border-left: 4px solid #3498db;
+          margin: 1em 0;
+          padding: 0.5em 1em;
+          background-color: #ecf0f1;
+          color: #2c3e50;
+          border-radius: 0 8px 8px 0;
         }
         
-        #TOC li {
+        blockquote p {
           margin: 0.5em 0;
         }
         
-        #TOC a {
-          color: #0366d6;
+        /* 列表样式 */
+        ul, ol {
+          margin: 0.8em 0;
+          padding-left: 2em;
+        }
+        
+        li {
+          margin: 0.4em 0;
+          line-height: 1.6;
+        }
+        
+        /* 表格样式 */
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin: 1em 0;
+          page-break-inside: avoid;
+          font-size: 10pt;
+        }
+        
+        th {
+          background-color: #34495e;
+          color: white;
+          font-weight: 600;
+          padding: 0.6em;
+          text-align: left;
+          border: 1px solid #2c3e50;
+        }
+        
+        td {
+          padding: 0.6em;
+          border: 1px solid #bdc3c7;
+          background-color: white;
+        }
+        
+        tr:nth-child(even) td {
+          background-color: #f8f9fa;
+        }
+        
+        /* 图片样式 */
+        img {
+          max-width: 100%;
+          height: auto;
+          display: block;
+          margin: 1em auto;
+          page-break-inside: avoid;
+          border-radius: 4px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* 分页控制 */
+        .newpage {
+          page-break-before: always;
         }
         
         /* 避免在标题前分页 */
         h1, h2, h3 {
-          page-break-before: avoid;
+          page-break-after: avoid;
         }
         
-        /* 确保代码块不被分割 */
-        pre {
+        /* 确保代码块和表格不被分割 */
+        pre, table, img {
           page-break-inside: avoid;
         }
         
-        /* 图片处理 */
-        img {
-          max-width: 100%;
-          height: auto;
+        /* 章节开始的空白控制 */
+        h1:first-child {
+          margin-top: 0.5cm;
+        }
+        
+        /* 打印优化 */
+        @media print {
+          .cover {
+            height: 100vh;
+          }
+          
+          pre, code {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+          }
+        }
+        EOF
+
+    - name: Generate Enhanced PDF
+      run: |
+        echo "🎯 生成增强样式的 PDF..."
+        
+        # 使用 WeasyPrint 生成 PDF
+        weasyprint _temp/document.html _output/javascript-guide-enhanced.pdf \
+          -s _temp/enhanced.css \
+          --presentational-hints \
+          --optimize-size
+        
+        echo "✅ 增强样式 PDF 生成完成"
+        echo "PDF 文件信息: $(ls -lh _output/javascript-guide-enhanced.pdf)"
+
+    - name: Create Alternative Simple PDF
+      run: |
+        echo "🔄 同时生成简洁版 PDF..."
+        
+        # 创建简洁版 CSS
+        cat > _temp/simple.css << 'EOF'
+        @page {
+          size: A4;
+          margin: 2cm;
+        }
+        
+        body {
+          font-family: "Noto Sans CJK SC", sans-serif;
+          font-size: 11pt;
+          line-height: 1.6;
+          color: #000;
+        }
+        
+        h1, h2, h3 {
+          color: #333;
+          page-break-after: avoid;
+        }
+        
+        h1 { font-size: 16pt; border-bottom: 1px solid #ccc; }
+        h2 { font-size: 14pt; }
+        h3 { font-size: 12pt; }
+        
+        code {
+          font-family: "Noto Sans Mono CJK SC", monospace;
+          background: #f5f5f5;
+          padding: 0.1em 0.3em;
+        }
+        
+        pre {
+          background: #f5f5f5;
+          padding: 1em;
+          border-radius: 4px;
           page-break-inside: avoid;
         }
         EOF
         
-        echo "✅ 自定义 CSS 创建完成"
+        # 生成简洁版
+        weasyprint _temp/document.html _output/javascript-guide-simple.pdf \
+          -s _temp/simple.css
+        
+        echo "✅ 简洁版 PDF 生成完成"
 
-    - name: Convert HTML to PDF with WeasyPrint
+    - name: Verify and Compare Results
       run: |
-        echo "🎯 使用 WeasyPrint 生成 PDF..."
+        echo "📊 验证生成结果..."
         
-        # 检查 HTML 文件是否存在
-        if [ ! -f "_temp/document.html" ]; then
-          echo "❌ _temp/document.html 不存在"
-          exit 1
-        fi
+        echo "增强版 PDF:"
+        ls -lh _output/javascript-guide-enhanced.pdf
+        echo ""
+        echo "简洁版 PDF:"
+        ls -lh _output/javascript-guide-simple.pdf
         
-        # 使用 WeasyPrint 生成 PDF
-        weasyprint _temp/document.html _output/javascript-guide.pdf \
-          -s _temp/custom.css \
-          --presentational-hints
+        # 检查文件大小
+        enhanced_size=$(stat -c%s "_output/javascript-guide-enhanced.pdf")
+        simple_size=$(stat -c%s "_output/javascript-guide-simple.pdf")
         
-        echo "✅ WeasyPrint PDF 生成完成"
-        echo "PDF 文件大小: $(ls -lh _output/javascript-guide.pdf)"
+        echo ""
+        echo "文件大小对比:"
+        echo "增强版: $((enhanced_size/1024)) KB"
+        echo "简洁版: $((simple_size/1024)) KB"
 
-    - name: Verify PDF Generation
-      run: |
-        echo "📊 验证 PDF 生成..."
-        
-        if [ ! -f "_output/javascript-guide.pdf" ]; then
-          echo "❌ PDF 文件未生成"
-          exit 1
-        fi
-        
-        PDF_SIZE=$(stat -c%s "_output/javascript-guide.pdf")
-        echo "PDF 文件大小: $PDF_SIZE 字节 ($(echo "scale=2; $PDF_SIZE/1024/1024" | bc) MB)"
-        
-        if [ "$PDF_SIZE" -lt 102400 ]; then
-          echo "⚠️ 警告: PDF 文件可能太小"
-        else
-          echo "✅ PDF 文件大小正常"
-        fi
-
-    - name: Upload PDF Artifact
+    - name: Upload PDF Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: JavaScript-Guide-PDF
-        path: _output/javascript-guide.pdf
-        retention-days: 30
-
-    - name: Upload Debug Files
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: Debug-Files
+        name: JavaScript-Guide-PDFs
         path: |
-          _temp/combined.md
-          _temp/document.html
-          _temp/custom.css
-        retention-days: 7
+          _output/javascript-guide-enhanced.pdf
+          _output/javascript-guide-simple.pdf
+        retention-days: 30
