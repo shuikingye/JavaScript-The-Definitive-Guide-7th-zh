@@ -1,0 +1,104 @@
+name: Generate PDF with Python and WeasyPrint
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  generate-pdf:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          pandoc \
+          fonts-noto-cjk \
+          fonts-noto-color-emoji
+        pip install weasyprint markdown
+
+    - name: Create Combined Markdown and Convert to HTML
+      run: |
+        echo "🎯 创建 HTML 文档..."
+        
+        # 创建合并的 Markdown
+        {
+          echo "# JavaScript权威指南第七版"
+          echo ""
+          echo "**作者: Richard-Billyham**"
+          echo ""
+          echo "---"
+          echo ""
+        } > _temp/combined.md
+        
+        if [ -f "README.md" ]; then
+          cat "README.md" >> _temp/combined.md
+          echo "" >> _temp/combined.md
+          echo "---" >> _temp/combined.md
+          echo "" >> _temp/combined.md
+        fi
+        
+        for i in {1..17}; do
+          if [ -f "./docs/ch${i}.md" ]; then
+            echo "# 第${i}章" >> _temp/combined.md
+            echo "" >> _temp/combined.md
+            cat "./docs/ch${i}.md" >> _temp/combined.md
+            echo "" >> _temp/combined.md
+            echo "---" >> _temp/combined.md
+            echo "" >> _temp/combined.md
+          fi
+        done
+        
+        # 使用 Pandoc 转换为 HTML
+        pandoc "_temp/combined.md" -o "_temp/document.html" \
+          --toc \
+          --toc-depth=3 \
+          --self-contained \
+          --css=https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css \
+          -V title="JavaScript权威指南第七版" \
+          -V author="Richard-Billyham" \
+          -V lang=zh-CN
+        
+        echo "✅ HTML 文档创建完成"
+
+    - name: Convert HTML to PDF with WeasyPrint
+      run: |
+        echo "🎯 使用 WeasyPrint 生成 PDF..."
+        
+        # 创建自定义 CSS 以确保中文字体
+        cat > _temp/custom.css << 'EOF'
+        @page {
+          size: A4;
+          margin: 2.5cm;
+        }
+        body {
+          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
+        }
+        .markdown-body {
+          font-family: "Noto Sans CJK SC", "Source Han Sans CN", sans-serif;
+          font-size: 14px;
+          line-height: 1.6;
+        }
+        EOF
+        
+        # 使用 WeasyPrint 生成 PDF
+        weasyprint _temp/document.html _output/javascript-guide-weasyprint.pdf \
+          -s _temp/custom.css
+        
+        echo "✅ WeasyPrint PDF 生成完成"
+
+    - name: Upload PDF Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: JavaScript-Guide-PDF
+        path: _output/javascript-guide-weasyprint.pdf
+        retention-days: 30
