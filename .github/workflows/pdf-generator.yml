@@ -1,0 +1,18 @@
+name: PDF Generator
+on: [push]  # 每次代码更新自动触发
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: Setup Pandoc
+      run: sudo apt-get install -y pandoc texlive-xetex 
+     
+    - name: Convert to PDF
+      run: |
+        pandoc README.md -o "JavaScript权威指南.pdf" \
+          --metadata author="Richard-Billyham" \   # 自动注入指定作者名
+          --toc --pdf-engine=xelatex \              # 目录+中文字体支持
+          -V mainfont="Noto Sans CJK SC"            # 优化中文字体
