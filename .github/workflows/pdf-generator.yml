@@ -1,4 +1,5 @@
 name: Generate PDF from Markdown
+
 on:
   push:
     branches: [main, master]
@@ -11,14 +12,15 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        # 确保检出所有文件，包括子模块（如果有）
         submodules: recursive
         fetch-depth: 0
 
     - name: Setup Environment
       run: |
-        # 创建必要的目录结构
         mkdir -p _output _temp
+        echo "工作目录: $(pwd)"
+        echo "文件列表:"
+        find . -name "*.md" -type f | head -10
 
     - name: Install Dependencies
       run: |
@@ -37,26 +39,7 @@ jobs:
           fonts-noto-color-emoji
 
     - name: Check Markdown Files
-      run: |
-        echo "📁 项目结构:"
-        find . -name "*.md" -type f | head -20
-        echo ""
-        echo "📄 Markdown 文件统计:"
-        find . -name "*.md" -type f | wc -l
-        
-        # 检查主文件是否存在
-        if [ ! -f "README.md" ] && [ ! -f "main.md" ] && [ ! -f "index.md" ]; then
-          echo "❌ 未找到主要的 Markdown 文件 (README.md, main.md, index.md)"
-          # 寻找可能的入口文件
-          ENTRY_FILE=$(find . -name "*.md" -type f | head -1)
-          if [ -n "$ENTRY_FILE" ]; then
-            echo "💡 建议使用: $ENTRY_FILE"
-          fi
-          exit 1
-        fi
-
-    - name: Find and Prepare Markdown Files
-      id: prepare_files
+      id: check_files
       run: |
         # 确定入口文件
         if [ -f "README.md" ]; then
@@ -69,26 +52,99 @@ jobs:
           ENTRY_FILE=$(find . -name "*.md" -type f | head -1)
         fi
         
-        echo "📖 使用入口文件: $ENTRY_FILE"
+        if [ -z "$ENTRY_FILE" ]; then
+          echo "❌ 未找到任何 Markdown 文件"
+          exit 1
+        fi
         
-        # 收集所有 Markdown 文件（排除不需要的）
+        echo "📖 使用入口文件: $ENTRY_FILE"
+        echo "entry_file=$ENTRY_FILE" >> $GITHUB_OUTPUT
+        
+        # 记录找到的所有 Markdown 文件
         find . -name "*.md" -type f \
           ! -path "./.git/*" \
           ! -path "./node_modules/*" \
           ! -path "./_output/*" \
-          ! -path "./_temp/*" \
-          | sort > _temp/file_list.txt
+          ! -path "./_temp/*" > _temp/all_markdown_files.txt
         
         echo "📋 找到的 Markdown 文件:"
-        cat _temp/file_list.txt
+        cat _temp/all_markdown_files.txt
+
+    - name: Create LaTeX Header File
+      run: |
+        # 创建包含完整LaTeX样式的header文件
+        cat > _temp/header.tex << 'EOFEND'
+        \usepackage{titlesec}
+        \usepackage{fancyhdr}
+        \usepackage{xcolor}
+        \usepackage{hyperref}
         
-        # 设置输出变量
-        echo "entry_file=$ENTRY_FILE" >> $GITHUB_OUTPUT
+        % 章节标题样式
+        \titleformat{\chapter}[display]
+          {\normalfont\huge\bfseries\color{blue!70!black}}
+          {\chaptertitlename\ \thechapter}{20pt}{\Huge}
+        
+        \titleformat{\section}
+          {\normalfont\Large\bfseries\color{blue!60!black}}
+          {\thesection}{1em}{}
+        
+        \titleformat{\subsection}
+          {\normalfont\large\bfseries\color{blue!50!black}}
+          {\thesubsection}{1em}{}
+        
+        % 页眉页脚设置
+        \pagestyle{fancy}
+        \fancyhf{}
+        \fancyhead[L]{\leftmark}
+        \fancyhead[R]{\thepage}
+        \renewcommand{\headrulewidth}{0.5pt}
+        
+        % 超链接设置
+        \hypersetup{
+          pdfauthor={Richard-Billyham},
+          pdftitle={JavaScript权威指南第七版},
+          pdfsubject={JavaScript编程指南},
+          pdfkeywords={JavaScript,编程,指南},
+          bookmarksnumbered=true,
+          bookmarksopen=true,
+          pdfstartview=FitH
+        }
+        
+        % 代码块支持
+        \usepackage{listings}
+        \lstset{
+          basicstyle=\ttfamily\small,
+          breaklines=true,
+          frame=single,
+          backgroundcolor=\color{gray!5}
+        }
+        EOFEND
+        
+        # 验证文件创建成功
+        echo "✅ LaTeX header 文件已创建:"
+        ls -la _temp/header.tex
+        echo "文件内容预览:"
+        head -10 _temp/header.tex
 
     - name: Generate PDF with Enhanced Styling
       run: |
-        # 创建自定义模板或使用增强参数
-        pandoc "${{ steps.prepare_files.outputs.entry_file }}" -o "_output/JavaScript权威指南.pdf" \
+        ENTRY_FILE="${{ steps.check_files.outputs.entry_file }}"
+        WORKSPACE_PATH="${{ github.workspace }}"
+        
+        echo "🎯 开始生成PDF..."
+        echo "入口文件: $ENTRY_FILE"
+        echo "工作目录: $WORKSPACE_PATH"
+        echo "Header文件路径: $WORKSPACE_PATH/_temp/header.tex"
+        
+        # 检查header文件是否存在
+        if [ ! -f "_temp/header.tex" ]; then
+          echo "❌ Header文件不存在，重新创建..."
+          mkdir -p _temp
+          echo "\\usepackage{hyperref}" > _temp/header.tex
+        fi
+        
+        # 使用Pandoc生成PDF，确保使用完整路径
+        pandoc "$ENTRY_FILE" -o "_output/JavaScript权威指南.pdf" \
           --metadata title="JavaScript权威指南第七版" \
           --metadata author="Richard-Billyham" \
           --table-of-contents \
@@ -107,57 +163,29 @@ jobs:
           -V papersize=a4 \
           -V fontsize=11pt \
           -V linestretch=1.2 \
-          --include-in-header=_temp/header.tex \
+          --include-in-header="$WORKSPACE_PATH/_temp/header.tex" \
           --highlight-style=tango
-
-    - name: Create Custom Header (Enhanced Styling)
-      run: |
-        cat > _temp/header.tex << 'EOF'
-        \usepackage{titlesec}
-        \usepackage{fancyhdr}
         
-        % 章节标题样式
-        \titleformat{\chapter}[display]
-          {\normalfont\huge\bfseries\color{blue!70!black}}
-          {\chaptertitlename\ \thechapter}{20pt}{\Huge}
-        
-        \titleformat{\section}
-          {\normalfont\Large\bfseries\color{blue!60!black}}
-          {\thesection}{1em}{}
-        
-        \titleformat{\subsection}
-          {\normalfont\large\bfseries\color{blue!50!black}}
-          {\thesubsection}{1em}{}
-        
-        % 页眉页脚
-        \pagestyle{fancy}
-        \fancyhf{}
-        \fancyhead[L]{\leftmark}
-        \fancyhead[R]{\thepage}
-        \renewcommand{\headrulewidth}{0.5pt}
-        
-        % 代码块样式增强
-        \usepackage{minted}
-        \usemintedstyle{vs}
-        
-        % 链接样式
-        \usepackage{hyperref}
-        \hypersetup{
-          pdfauthor={Richard-Billyham},
-          pdftitle={JavaScript权威指南第七版},
-          pdfsubject={JavaScript编程指南},
-          pdfkeywords={JavaScript,编程,指南}
-        }
-        EOF
+        echo "✅ PDF生成命令执行完成"
 
     - name: Verify PDF Generation
       run: |
         if [ ! -f "_output/JavaScript权威指南.pdf" ]; then
           echo "❌ PDF 文件生成失败"
+          echo "当前目录内容:"
+          ls -la
+          echo "_output 目录内容:"
+          ls -la _output/ || echo "_output 目录不存在"
           exit 1
         else
           echo "✅ PDF 文件生成成功"
+          echo "文件信息:"
           ls -la "_output/JavaScript权威指南.pdf"
+          # 尝试获取PDF基本信息
+          if command -v pdfinfo &> /dev/null; then
+            sudo apt-get install -y poppler-utils
+            pdfinfo "_output/JavaScript权威指南.pdf" || echo "无法读取PDF信息"
+          fi
         fi
 
     - name: Upload PDF Artifact
