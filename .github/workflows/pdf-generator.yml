@@ -1,18 +1,174 @@
-name: PDF Generator
-on: [push]  # 每次代码更新自动触发
+name: Generate PDF from Markdown
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:  # 允许手动触发
+
 jobs:
-  convert:
+  generate-pdf:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-      
-    - name: Setup Pandoc
-      run: sudo apt-get install -y pandoc texlive-xetex 
-     
-    - name: Convert to PDF
+      with:
+        # 确保检出所有文件，包括子模块（如果有）
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Environment
       run: |
-        pandoc README.md -o "JavaScript权威指南.pdf" \
-          --metadata author="Richard-Billyham" \   # 自动注入指定作者名
-          --toc --pdf-engine=xelatex \              # 目录+中文字体支持
-          -V mainfont="Noto Sans CJK SC"            # 优化中文字体
+        # 创建必要的目录结构
+        mkdir -p _output _temp
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          pandoc \
+          texlive-xetex \
+          texlive-latex-recommended \
+          texlive-latex-extra \
+          texlive-fonts-recommended \
+          texlive-fonts-extra \
+          texlive-science \
+          texlive-pictures \
+          lmodern \
+          fonts-noto-cjk \
+          fonts-noto-color-emoji
+
+    - name: Check Markdown Files
+      run: |
+        echo "📁 项目结构:"
+        find . -name "*.md" -type f | head -20
+        echo ""
+        echo "📄 Markdown 文件统计:"
+        find . -name "*.md" -type f | wc -l
+        
+        # 检查主文件是否存在
+        if [ ! -f "README.md" ] && [ ! -f "main.md" ] && [ ! -f "index.md" ]; then
+          echo "❌ 未找到主要的 Markdown 文件 (README.md, main.md, index.md)"
+          # 寻找可能的入口文件
+          ENTRY_FILE=$(find . -name "*.md" -type f | head -1)
+          if [ -n "$ENTRY_FILE" ]; then
+            echo "💡 建议使用: $ENTRY_FILE"
+          fi
+          exit 1
+        fi
+
+    - name: Find and Prepare Markdown Files
+      id: prepare_files
+      run: |
+        # 确定入口文件
+        if [ -f "README.md" ]; then
+          ENTRY_FILE="README.md"
+        elif [ -f "main.md" ]; then
+          ENTRY_FILE="main.md"
+        elif [ -f "index.md" ]; then
+          ENTRY_FILE="index.md"
+        else
+          ENTRY_FILE=$(find . -name "*.md" -type f | head -1)
+        fi
+        
+        echo "📖 使用入口文件: $ENTRY_FILE"
+        
+        # 收集所有 Markdown 文件（排除不需要的）
+        find . -name "*.md" -type f \
+          ! -path "./.git/*" \
+          ! -path "./node_modules/*" \
+          ! -path "./_output/*" \
+          ! -path "./_temp/*" \
+          | sort > _temp/file_list.txt
+        
+        echo "📋 找到的 Markdown 文件:"
+        cat _temp/file_list.txt
+        
+        # 设置输出变量
+        echo "entry_file=$ENTRY_FILE" >> $GITHUB_OUTPUT
+
+    - name: Generate PDF with Enhanced Styling
+      run: |
+        # 创建自定义模板或使用增强参数
+        pandoc "${{ steps.prepare_files.outputs.entry_file }}" -o "_output/JavaScript权威指南.pdf" \
+          --metadata title="JavaScript权威指南第七版" \
+          --metadata author="Richard-Billyham" \
+          --table-of-contents \
+          --toc-depth=3 \
+          --number-sections \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V sansfont="Noto Sans CJK SC" \
+          -V monofont="Noto Sans Mono CJK SC" \
+          -V geometry:margin=2.5cm \
+          -V geometry:a4paper \
+          -V colorlinks=true \
+          -V linkcolor=blue \
+          -V urlcolor=cyan \
+          -V toccolor=blue \
+          -V papersize=a4 \
+          -V fontsize=11pt \
+          -V linestretch=1.2 \
+          --include-in-header=_temp/header.tex \
+          --highlight-style=tango
+
+    - name: Create Custom Header (Enhanced Styling)
+      run: |
+        cat > _temp/header.tex << 'EOF'
+        \usepackage{titlesec}
+        \usepackage{fancyhdr}
+        
+        % 章节标题样式
+        \titleformat{\chapter}[display]
+          {\normalfont\huge\bfseries\color{blue!70!black}}
+          {\chaptertitlename\ \thechapter}{20pt}{\Huge}
+        
+        \titleformat{\section}
+          {\normalfont\Large\bfseries\color{blue!60!black}}
+          {\thesection}{1em}{}
+        
+        \titleformat{\subsection}
+          {\normalfont\large\bfseries\color{blue!50!black}}
+          {\thesubsection}{1em}{}
+        
+        % 页眉页脚
+        \pagestyle{fancy}
+        \fancyhf{}
+        \fancyhead[L]{\leftmark}
+        \fancyhead[R]{\thepage}
+        \renewcommand{\headrulewidth}{0.5pt}
+        
+        % 代码块样式增强
+        \usepackage{minted}
+        \usemintedstyle{vs}
+        
+        % 链接样式
+        \usepackage{hyperref}
+        \hypersetup{
+          pdfauthor={Richard-Billyham},
+          pdftitle={JavaScript权威指南第七版},
+          pdfsubject={JavaScript编程指南},
+          pdfkeywords={JavaScript,编程,指南}
+        }
+        EOF
+
+    - name: Verify PDF Generation
+      run: |
+        if [ ! -f "_output/JavaScript权威指南.pdf" ]; then
+          echo "❌ PDF 文件生成失败"
+          exit 1
+        else
+          echo "✅ PDF 文件生成成功"
+          ls -la "_output/JavaScript权威指南.pdf"
+        fi
+
+    - name: Upload PDF Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: JavaScript权威指南
+        path: _output/JavaScript权威指南.pdf
+        retention-days: 30
+
+    - name: Upload to GitHub Releases (Optional)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: _output/JavaScript权威指南.pdf
