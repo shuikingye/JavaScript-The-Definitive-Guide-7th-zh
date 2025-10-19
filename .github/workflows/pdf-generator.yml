@@ -33,10 +33,11 @@ jobs:
           texlive-fonts-extra \
           texlive-science \
           texlive-pictures \
+          texlive-luatex \
           lmodern \
           fonts-noto-cjk \
           fonts-noto-color-emoji \
-          poppler-utils  # 用于 pdfinfo
+          poppler-utils
 
     - name: Find and Combine All Markdown Files
       id: combine_files
@@ -53,39 +54,39 @@ jobs:
           ! -name "CONTRIBUTING.md" \
           ! -name "CHANGELOG.md" > _temp/md_files.txt
         
-        # 如果有 README.md，放在最前面
+        # 创建合并文件
         if [ -f "README.md" ]; then
-          echo "README.md" > _temp/combined.md
-          echo "---" >> _temp/combined.md
+          echo "使用 README.md 作为开头"
+          cp README.md _temp/combined.md
           echo "" >> _temp/combined.md
+          echo "\\newpage" >> _temp/combined.md
+          echo "" >> _temp/combined.md
+        else
+          touch _temp/combined.md
         fi
         
-        # 按数字顺序排序文件（如果文件名以数字开头）
+        # 按数字顺序排序文件
         if [ -s "_temp/md_files.txt" ]; then
           echo "📚 找到以下 Markdown 文件:"
           cat _temp/md_files.txt
           
-          # 尝试按数字排序
-          cat _temp/md_files.txt | sort -V > _temp/sorted_files.txt
+          # 按数字排序
+          sort -V _temp/md_files.txt > _temp/sorted_files.txt
           
           # 合并所有文件
           while IFS= read -r file; do
             if [ -f "$file" ]; then
               echo "添加文件: $file"
+              echo "# $(basename "$file" .md)" >> _temp/combined.md
+              echo "" >> _temp/combined.md
               cat "$file" >> _temp/combined.md
               echo "" >> _temp/combined.md
-              echo "---" >> _temp/combined.md
+              echo "\\newpage" >> _temp/combined.md
               echo "" >> _temp/combined.md
             fi
           done < _temp/sorted_files.txt
         else
-          # 如果没有其他文件，只使用 README.md
-          if [ -f "README.md" ]; then
-            cp README.md _temp/combined.md
-          else
-            echo "❌ 没有找到任何 Markdown 文件"
-            exit 1
-          fi
+          echo "⚠️ 没有找到其他 Markdown 文件"
         fi
         
         echo "✅ 合并完成，总大小:"
@@ -93,7 +94,40 @@ jobs:
         echo "行数统计:"
         wc -l _temp/combined.md
 
-    - name: Create LaTeX Header File
+    - name: Preprocess Markdown for LaTeX Compatibility
+      run: |
+        echo "🔧 预处理 Markdown 文件以兼容 LaTeX..."
+        
+        # 备份原始文件
+        cp _temp/combined.md _temp/combined_backup.md
+        
+        # 转义 LaTeX 特殊字符
+        sed -i 's/\\/\\\\textbackslash /g' _temp/combined.md
+        sed -i 's/#/\\#/g' _temp/combined.md
+        sed -i 's/\$/\\$/g' _temp/combined.md
+        sed -i 's/%/\\%/g' _temp/combined.md
+        sed -i 's/&/\\&/g' _temp/combined.md
+        sed -i 's/_/\\_/g' _temp/combined.md
+        sed -i 's/{/\\{/g' _temp/combined.md
+        sed -i 's/}/\\}/g' _temp/combined.md
+        sed -i 's/~/\\textasciitilde /g' _temp/combined.md
+        sed -i 's/\^/\\textasciicircum /g' _temp/combined.md
+        
+        # 特别处理 \n 和其他转义序列
+        sed -i 's/\\n/\\\\n/g' _temp/combined.md
+        sed -i 's/\\t/\\\\t/g' _temp/combined.md
+        sed -i 's/\\r/\\\\r/g' _temp/combined.md
+        
+        echo "✅ 预处理完成"
+
+    - name: Debug Problematic Section
+      run: |
+        echo "🐛 调试问题区域 (第2100-2110行):"
+        if [ -f "_temp/combined.md" ]; then
+          sed -n '2100,2110p' _temp/combined.md
+        fi
+
+    - name: Create Robust LaTeX Header
       run: |
         mkdir -p _temp
         cat > _temp/header.tex << 'EOFEND'
@@ -102,6 +136,12 @@ jobs:
         \usepackage{xcolor}
         \usepackage{hyperref}
         \usepackage{bookmark}
+        \usepackage{listings}
+        \usepackage{minted}
+        
+        % 防止代码块中的特殊字符出错
+        \usepackage[utf8]{inputenc}
+        \usepackage{upquote} % 确保引号正确处理
         
         % 章节标题样式
         \titleformat{\chapter}[display]
@@ -137,45 +177,34 @@ jobs:
           citecolor=green
         }
         
-        % 代码块样式
-        \usepackage{listings}
-        \usepackage{caption}
-        \DeclareCaptionFont{white}{\color{white}}
-        \DeclareCaptionFormat{listing}{\colorbox{gray}{\parbox{\textwidth}{#1#2#3}}}
-        \captionsetup[lstlisting]{format=listing,labelfont=white,textfont=white}
-        
+        % 代码列表设置 - 更兼容的设置
         \lstset{
-          backgroundcolor=\color{white},
-          basicstyle=\footnotesize\ttfamily,
-          breakatwhitespace=false,
+          basicstyle=\ttfamily\footnotesize,
           breaklines=true,
-          captionpos=b,
-          commentstyle=\color{green},
-          extendedchars=true,
           frame=single,
-          keepspaces=true,
-          keywordstyle=\color{blue},
-          numbers=left,
-          numbersep=5pt,
-          numberstyle=\tiny\color{gray},
-          rulecolor=\color{black},
-          showspaces=false,
-          showstringspaces=false,
-          showtabs=false,
-          stepnumber=1,
-          stringstyle=\color{red},
-          tabsize=2
+          backgroundcolor=\color{gray!5},
+          captionpos=b,
+          abovecaptionskip=10pt,
+          belowcaptionskip=10pt,
+          xleftmargin=10pt,
+          xrightmargin=10pt,
+          escapeinside={\%*}{*)}, % 允许在代码中插入LaTeX
+          upquote=true, % 确保直引号
+          showstringspaces=false
         }
+        
+        % 处理内联代码
+        \newcommand{\code}[1]{\texttt{#1}}
         EOFEND
 
-    - name: Generate PDF with All Content
+    - name: Generate PDF with Robust Settings
       run: |
         WORKSPACE_PATH="${{ github.workspace }}"
         
-        echo "🎯 开始生成完整PDF..."
+        echo "🎯 开始生成PDF (使用更稳健的设置)..."
         echo "输入文件大小: $(ls -lh _temp/combined.md)"
         
-        # 生成PDF
+        # 使用更稳健的pandoc设置
         pandoc "_temp/combined.md" -o "_output/javascript-guide.pdf" \
           --metadata title="JavaScript权威指南第七版" \
           --metadata author="Richard-Billyham" \
@@ -197,39 +226,58 @@ jobs:
           -V linestretch=1.2 \
           -V secnumdepth=3 \
           --include-in-header="$WORKSPACE_PATH/_temp/header.tex" \
-          --highlight-style=tango \
-          --pdf-engine-opt=-shell-escape
+          --highlight-style=pygments \
+          --listings \
+          -f markdown+smart \
+          --wrap=auto
         
-        echo "✅ PDF生成完成"
+        echo "✅ PDF生成命令执行完成"
 
-    - name: Verify PDF Content
+    - name: Fallback PDF Generation (if main method fails)
+      if: failure()
+      run: |
+        echo "🔄 尝试备用PDF生成方法..."
+        WORKSPACE_PATH="${{ github.workspace }}"
+        
+        # 简化设置，避免复杂特性
+        pandoc "_temp/combined_backup.md" -o "_output/javascript-guide-simple.pdf" \
+          --metadata title="JavaScript权威指南第七版" \
+          --metadata author="Richard-Billyham" \
+          --table-of-contents \
+          --toc-depth=2 \
+          --pdf-engine=xelatex \
+          -V mainfont="Noto Sans CJK SC" \
+          -V geometry:margin=2.5cm \
+          -V geometry:a4paper \
+          -V papersize=a4 \
+          -V fontsize=11pt \
+          --highlight-style=kate
+        
+        echo "✅ 备用PDF生成完成"
+
+    - name: Verify PDF Generation
       run: |
         echo "📊 验证PDF文件..."
-        if [ ! -f "_output/javascript-guide.pdf" ]; then
-          echo "❌ PDF 文件生成失败"
+        # 检查主PDF或备用PDF
+        if [ -f "_output/javascript-guide.pdf" ]; then
+          PDF_FILE="_output/javascript-guide.pdf"
+        elif [ -f "_output/javascript-guide-simple.pdf" ]; then
+          PDF_FILE="_output/javascript-guide-simple.pdf"
+        else
+          echo "❌ 没有找到PDF文件"
           exit 1
         fi
         
-        PDF_SIZE=$(stat -c%s "_output/javascript-guide.pdf")
-        echo "PDF 文件大小: $PDF_SIZE 字节"
+        PDF_SIZE=$(stat -c%s "$PDF_FILE")
+        echo "PDF 文件大小: $PDF_SIZE 字节 ($(echo "scale=2; $PDF_SIZE/1024/1024" | bc) MB)"
         
-        # 检查PDF基本信息
         if command -v pdfinfo >/dev/null 2>&1; then
           echo "📄 PDF 信息:"
-          pdfinfo "_output/javascript-guide.pdf" || echo "无法读取PDF详细信息"
-        else
-          echo "📄 PDF 文件信息:"
-          ls -lh "_output/javascript-guide.pdf"
+          pdfinfo "$PDF_FILE" || echo "无法读取PDF详细信息"
         fi
         
-        # 大小检查 - 如果小于100KB，可能有问题
         if [ "$PDF_SIZE" -lt 102400 ]; then
           echo "⚠️  警告: PDF 文件可能太小，内容可能不完整"
-          echo "调试信息:"
-          echo "合并的Markdown文件:"
-          ls -lh _temp/combined.md
-          echo "前100行内容:"
-          head -100 _temp/combined.md
           exit 1
         else
           echo "✅ PDF 文件大小正常"
@@ -239,11 +287,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: JavaScript-Guide-PDF
-        path: _output/javascript-guide.pdf
+        path: |
+          _output/javascript-guide.pdf
+          _output/javascript-guide-simple.pdf
         retention-days: 30
-
-    - name: Upload to GitHub Releases
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: _output/javascript-guide.pdf
